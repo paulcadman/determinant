@@ -40,6 +40,33 @@ def destructNeg? (e : Expr) : Option UnaryOpApp := Id.run do
   let_expr Neg.neg α inst x := e | return none
   return some ⟨mkApp2 e.getAppFn α inst, x⟩
 
+/-- A proof of `lo < n` by `decide` -/
+def mkLtProof (lo n : Nat) : MetaM Expr := do
+  unless lo < n do
+    throwError m!"failed to prove {lo} < {n}"
+  let p ← mkAppOptM ``LT.lt #[
+    mkConst ``Nat,
+    mkConst ``instLTNat,
+    mkNatLit lo,
+    mkNatLit n
+  ]
+  let inst ← synthInstance (mkApp (mkConst ``Decidable) p)
+  return mkApp3 (mkConst ``of_decide_eq_true) p inst (← mkEqRefl (mkConst ``Bool.true))
+
+/-- A proof of `¬ lo < n` by `decide` -/
+def mkNotLtProof (lo n : Nat) : MetaM Expr := do
+  unless ¬ lo < n do
+    throwError m!"failed to prove ¬ {lo} < {n}"
+  let p ← mkAppOptM ``LT.lt #[
+    mkConst ``Nat,
+    mkConst ``instLTNat,
+    mkNatLit lo,
+    mkNatLit n
+  ]
+  let inst ← synthInstance (mkApp (mkConst ``Decidable) p)
+  return mkApp3 (mkConst ``of_decide_eq_false) p inst (← mkEqRefl (mkConst ``Bool.false))
+
+
 end Cert
 
 end
