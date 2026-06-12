@@ -3,7 +3,9 @@ module
 import Determinant.CertChain.Bird
 import Mathlib.LinearAlgebra.Matrix.Determinant.Basic
 
-namespace CertChain
+namespace Tests
+
+open BirdDet
 
 variable
   {R : Type*}
@@ -34,4 +36,4 @@ example (a b c d : R) : birdDet 2 #[a, b, c, d] = a * d - b * c := by
     _ = a * d - b * c := by
       ring
 
-end CertChain
+end Tests

@@ -1,15 +1,19 @@
 module
 
 public meta import Determinant.CertChain.Tactic
+public meta import Determinant.CertChain.Cert
 
 import Lean
 import Qq
 
-namespace CertChain
+namespace Tests
 
 open Lean Meta Qq
 open Mathlib.Tactic (AtomM)
 open Mathlib.Tactic.Ring
+open Cert
+open BirdDet
+open Tactic
 
 def assertDefEq (actual expected : Expr) : MetaM Unit := do
   unless (← isDefEq actual expected) do
@@ -138,7 +142,11 @@ elab "zero_prod_close" : tactic => Elab.Tactic.withMainContext do
 example (x y : ℤ) : x * (y - y) = 0 := by
   zero_prod_close
 
-end Cert
+end Tests
+
+
+
+
 
 -- structure EqProof where
 --   proof : Expr
