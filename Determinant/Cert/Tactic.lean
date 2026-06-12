@@ -33,70 +33,7 @@ structure Cert {u : Level} {α : Q(Type u)} (sα : Q(CommSemiring $α)) where
 
 namespace Cert
 
-def isZeroVal
-  {u : Level}
-  {α : Q(Type u)}
-  {sα : Q(CommSemiring $α)}
-  {e : Q($α)}
-  (val : Common.ExSum RatCoeff sα e)
-  : Bool :=
-  match val with
-  | .zero => true
-  | .add .. => false
-
-/-- Repackage a `Ring` evaluation result as a certificate. -/
-def toCert
-  {u : Level}
-  {α : Q(Type u)}
-  {sα : Q(CommSemiring $α)}
-  {e : Q($α)}
-  (res : Common.Result (Common.ExSum RatCoeff sα) e)
-  : Cert sα :=
-  { norm := res.expr, val := res.val, proof := res.proof, isZero := isZeroVal res.val }
-
-/-- Cast an existing `proof : subject = 0` as a certificate for the cannonical zero -/
-def zeroCertOf
-  {u : Level}
-  {α : Q(Type u)}
-  {sα : Q(CommSemiring $α)}
-  (subject proof : Expr)
-  : MetaM (Cert sα) := do
-    let zero : Q($α) := q(0)
-    let proof ← mkExpectedTypeHint proof (← mkEq subject zero)
-    return {norm := zero, val := .zero, proof, isZero := true}
-
-/-- Given `cz.proof : cz.subject! = 0`, certify the product `x * cz.subject = 0` without evaluating `x`.
-
-`mulP` is HMul.hmul, partially applied with types and instances (see `destructMul?`).
--/
-def zeroProdCert
-  {u : Level}
-  {α : Q(Type u)}
-  {sα : Q(CommSemiring $α)}
-  (mulP x : Expr)
-  (cz : Cert sα)
-  : MetaM (Cert sα) := do
-    -- x * (cz.subject) = x * 0
-    let h1 ← mkCongrArg (mkApp mulP x) cz.proof
-    -- x * 0 = 0
-    let h2 ← mkAppM ``mul_zero #[x]
-    -- x * (cz.subject) = 0
-    let h ← mkEqTrans h1 h2
-    let some (_, lhs, _) := (← inferType h1).eq? | unreachable!
-    zeroCertOf lhs h
-
-/-- Extract the certificate's subject
-
-Used for tests and debugging-/
-def subject!
-  {u : Level}
-  {α : Q(Type u)}
-  {sα : Q(CommSemiring $α)}
-  (c : Cert sα)
-  : MetaM Expr := do
-    let some (_, lhs, _) := (← inferType c.proof).eq?
-      | throwError "Cert.subject!: proof is not an equality: {c.proof}"
-    return lhs
+section Helpers
 
 structure BinaryOpApp where
   partialApp : Expr
@@ -148,6 +85,18 @@ def mkNotLtProof (lo n : Nat) : MetaM Expr := do
   let inst ← synthInstance (mkApp (mkConst ``Decidable) p)
   return mkApp3 (mkConst ``of_decide_eq_false) p inst (← mkEqRefl (mkConst ``Bool.false))
 
+structure EqProof where
+  proof : Expr
+  lhs : Expr
+  rhs : Expr
+
+/-- Instantiate the lemma `name` and return `{proof, lhs, rhs}` -/
+def applyEqLemma (name : Name) (u : Level) (args : Array Expr) : MetaM EqProof := do
+  let proof := mkAppN (mkConst name [u]) args
+  let some (_, lhs, rhs) := (← inferType proof).eq?
+    | throwError "applyEqLemms: {name} did not produce an equality"
+  return {proof, lhs, rhs}
+
 /-- Parse an array literal into an array of element exrpessions -/
 def arrayLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
   getArrayLit? e
@@ -175,6 +124,50 @@ def reifyBirdDet (e : Expr) : MetaM BirdDetInfo := do
   unless arrayEntries.size == dimension * dimension do
     throwError "matrix size mismatch: array has {arrayEntries.size} entries, expected {dimension * dimension}"
   return {level, ringType, commRingInst, dimension, dimensionExpr, arrayExpr, arrayEntries}
+
+end Helpers
+
+variable
+  {u : Level}
+  {α : Q(Type u)}
+  {sα : Q(CommSemiring $α)}
+
+def isZeroVal {e : Q($α)} (val : Common.ExSum RatCoeff sα e) : Bool :=
+  match val with
+  | .zero => true
+  | .add .. => false
+
+/-- Repackage a `Ring` evaluation result as a certificate. -/
+def toCert {e : Q($α)} (res : Common.Result (Common.ExSum RatCoeff sα) e) : Cert sα :=
+  { norm := res.expr, val := res.val, proof := res.proof, isZero := isZeroVal res.val }
+
+/-- Cast an existing `proof : subject = 0` as a certificate for the cannonical zero -/
+def zeroCertOf (subject proof : Expr) : MetaM (Cert sα) := do
+  let zero : Q($α) := q(0)
+  let proof ← mkExpectedTypeHint proof (← mkEq subject zero)
+  return {norm := zero, val := .zero, proof, isZero := true}
+
+/-- Given `cz.proof : cz.subject! = 0`, certify the product `x * cz.subject = 0` without evaluating `x`.
+
+`mulP` is HMul.hmul, partially applied with types and instances (see `destructMul?`).
+-/
+def zeroProdCert (mulP x : Expr) (cz : Cert sα) : MetaM (Cert sα) := do
+  -- x * (cz.subject) = x * 0
+  let h1 ← mkCongrArg (mkApp mulP x) cz.proof
+  -- x * 0 = 0
+  let h2 ← mkAppM ``mul_zero #[x]
+  -- x * (cz.subject) = 0
+  let h ← mkEqTrans h1 h2
+  let some (_, lhs, _) := (← inferType h1).eq? | unreachable!
+  zeroCertOf lhs h
+
+/-- Extract the certificate's subject
+
+Used for tests and debugging-/
+def subject! (c : Cert sα) : MetaM Expr := do
+  let some (_, lhs, _) := (← inferType c.proof).eq?
+    | throwError "Cert.subject!: proof is not an equality: {c.proof}"
+  return lhs
 
 end Cert
 
