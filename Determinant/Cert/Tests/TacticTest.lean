@@ -8,6 +8,8 @@ import Qq
 namespace Cert
 
 open Lean Meta Qq
+open Mathlib.Tactic (AtomM)
+open Mathlib.Tactic.Ring
 
 def assertDefEq (actual expected : Expr) : MetaM Unit := do
   unless (← isDefEq actual expected) do
@@ -110,5 +112,30 @@ run_meta do
 run_meta do
   let e : Q(ℤ) := q(birdDet 2 (Array.mk [1,2,3]))
   reifyBirdDet e
+
+-- Test zeroProdCert
+
+elab "zero_prod_close" : tactic => Elab.Tactic.withMainContext do
+  let g ← Elab.Tactic.getMainGoal
+  let some (_, lhs, _) := (← instantiateMVars (← g.getType)).eq?
+    | throwError "zero_prod_close: expected an equality"
+  let some ⟨mulP, x, z⟩  := destructMul? lhs
+    | throwError "zero_prod_close: expected a product"
+  let ⟨u, α, _⟩ ← inferTypeQ' lhs
+  let sα : Q(CommSemiring $α) ← synthInstanceQ q(CommSemiring $α)
+  let cα ← Common.mkCache sα
+  let rc := ringCompute cα
+  let proof ← AtomM.run .reducible do
+    have z : Q($α) := z
+    let resZ ← Common.eval rcℕ rc cα z
+    unless isZeroVal resZ.val do
+      throwError "zero_prod_close: the right factor does not normalize to zero"
+    let c ← zeroProdCert mulP x (toCert resZ)
+    pure c.proof
+  g.assign proof
+  Elab.Tactic.replaceMainGoal []
+
+example (x y : ℤ) : x * (y - y) = 0 := by
+  zero_prod_close
 
 end Cert
