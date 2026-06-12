@@ -1,7 +1,7 @@
 module
 
-public import Determinant.Tactic
-public import Determinant.CbvOpaqueDefs
+public import Determinant.Cbv.Tactic
+public import Determinant.Cbv.CbvOpaqueDefs
 import Mathlib.LinearAlgebra.Matrix.Determinant.Basic
 import Mathlib.LinearAlgebra.Matrix.Notation
 import Mathlib.RingTheory.Polynomial.Basic

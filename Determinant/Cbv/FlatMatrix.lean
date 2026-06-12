@@ -1,7 +1,7 @@
 module
 
 public meta import Mathlib.Tactic.Ring
-public import Determinant.CbvOpaqueDefs
+public import Determinant.Cbv.CbvOpaqueDefs
 public import Mathlib.LinearAlgebra.Matrix.Defs
 import Mathlib.LinearAlgebra.Matrix.Notation
 

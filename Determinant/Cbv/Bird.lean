@@ -1,7 +1,7 @@
 module
 
-public import Determinant.FlatMatrix
-public import Determinant.CbvOpaqueDefs
+public import Determinant.Cbv.FlatMatrix
+public import Determinant.Cbv.CbvOpaqueDefs
 public import Mathlib.Algebra.BigOperators.Group.Finset.Basic
 
 open scoped BigOperators
