@@ -4,7 +4,7 @@ public import Mathlib.Algebra.Ring.Defs
 
 @[expose] public section
 
-namespace Cert
+namespace CertChain
 
 variable
   {R : Type*}
@@ -70,6 +70,6 @@ theorem birdDet_eq (n k : Nat) (A : Array R) (hn : n = k + 1) :
       subst hn
       rfl
 
-end Cert
+end CertChain
 
 end

@@ -1,11 +1,11 @@
 module
 
-public meta import Determinant.Cert.Tactic
+public meta import Determinant.CertChain.Tactic
 
 import Lean
 import Qq
 
-namespace Cert
+namespace CertChain
 
 open Lean Meta Qq
 open Mathlib.Tactic (AtomM)
@@ -139,3 +139,16 @@ example (x y : ℤ) : x * (y - y) = 0 := by
   zero_prod_close
 
 end Cert
+
+-- structure EqProof where
+--   proof : Expr
+--   lhs : Expr
+--   rhs : Expr
+--
+-- /-- Instantiate the lemma `name` and return `{proof, lhs, rhs}` -/
+-- def applyEqLemma (name : Name) (u : Level) (args : Array Expr) : MetaM EqProof := do
+--   let proof := mkAppN (mkConst name [u]) args
+--   let some (_, lhs, rhs) := (← inferType proof).eq?
+--     | throwError "applyEqLemms: {name} did not produce an equality"
+--   return {proof, lhs, rhs}
+--

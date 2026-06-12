@@ -1,6 +1,6 @@
 module
 
-public import Determinant.Cert.Bird
+public import Determinant.CertChain.Bird
 public import Mathlib.Tactic.Ring
 public import Qq
 public meta import Lean.Meta.AppBuilder
@@ -31,7 +31,7 @@ structure Cert {u : Level} {α : Q(Type u)} (sα : Q(CommSemiring $α)) where
   /-- `true` when `norm` is zero -/
   isZero : Bool
 
-namespace Cert
+namespace CertChain
 
 section Helpers
 
@@ -84,18 +84,6 @@ def mkNotLtProof (lo n : Nat) : MetaM Expr := do
   ]
   let inst ← synthInstance (mkApp (mkConst ``Decidable) p)
   return mkApp3 (mkConst ``of_decide_eq_false) p inst (← mkEqRefl (mkConst ``Bool.false))
-
-structure EqProof where
-  proof : Expr
-  lhs : Expr
-  rhs : Expr
-
-/-- Instantiate the lemma `name` and return `{proof, lhs, rhs}` -/
-def applyEqLemma (name : Name) (u : Level) (args : Array Expr) : MetaM EqProof := do
-  let proof := mkAppN (mkConst name [u]) args
-  let some (_, lhs, rhs) := (← inferType proof).eq?
-    | throwError "applyEqLemms: {name} did not produce an equality"
-  return {proof, lhs, rhs}
 
 /-- Parse an array literal into an array of element exrpessions -/
 def arrayLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
@@ -169,6 +157,6 @@ def subject! (c : Cert sα) : MetaM Expr := do
     | throwError "Cert.subject!: proof is not an equality: {c.proof}"
   return lhs
 
-end Cert
+end CertChain
 
 end
