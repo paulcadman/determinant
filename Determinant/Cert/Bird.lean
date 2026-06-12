@@ -55,6 +55,21 @@ theorem sumFrom_stop (n lo : Nat) (f : Nat → R) (h : ¬ lo < n) :
       rw [sumFrom]
       simp [h]
 
+theorem iter_zero (n : Nat) (A : Array R) (F : Nat → Nat → R) (i j : Nat) :
+    iter n A 0 F i j = F i j := rfl
+
+theorem iter_succ (n : Nat) (A : Array R) (t : Nat) (F : Nat → Nat → R) (i j : Nat) :
+    iter n A (t + 1) F i j =
+    -(sumFrom n (i + 1) fun k => iter n A t F k k) * get n A i j
+    + sumFrom n (i + 1) fun k => iter n A t F i k * get n A k j := rfl
+
+theorem birdDet_zero (A : Array R) : birdDet 0 A = 1 := rfl
+
+theorem birdDet_eq (n k : Nat) (A : Array R) (hn : n = k + 1) :
+    birdDet n A = (-1 : R) ^ k * iter n A k (get n A) 0 0 := by
+      subst hn
+      rfl
+
 end Cert
 
 end
