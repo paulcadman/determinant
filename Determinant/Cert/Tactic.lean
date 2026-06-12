@@ -66,6 +66,33 @@ def mkNotLtProof (lo n : Nat) : MetaM Expr := do
   let inst ← synthInstance (mkApp (mkConst ``Decidable) p)
   return mkApp3 (mkConst ``of_decide_eq_false) p inst (← mkEqRefl (mkConst ``Bool.false))
 
+/-- Parse an array literal into an array of element exrpessions -/
+def arrayLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
+  getArrayLit? e
+
+structure BirdDetInfo where
+  level : Level
+  ringType : Expr
+  commRingInst : Expr
+  dimension : Nat
+  dimensionExpr : Expr
+  arrayExpr : Expr
+  arrayEntries : Array Expr
+
+def reifyBirdDet (e : Expr) : MetaM BirdDetInfo := do
+  let e ← instantiateMVars e
+  let_expr birdDet ringType commRingInst dimensionExpr arrayExpr := e
+    | throwError "expected an application of `birdDet, got {e}"
+  let .const _ [level] := e.getAppFn
+    | throwError "expected `birdDet` to have exactly one universe level"
+  let dimensionExpr ← whnf dimensionExpr
+  let some dimension := dimensionExpr.rawNatLit?
+    | throwError "expected the dimension to be a `Nat` literal, got {dimensionExpr}"
+  let some arrayEntries ← arrayLiteral? arrayExpr
+    | throwError "expected an array literal matrix, got {arrayExpr}"
+  unless arrayEntries.size == dimension * dimension do
+    throwError "matrix size mismatch: array has {arrayEntries.size} entries, expected {dimension * dimension}"
+  return {level, ringType, commRingInst, dimension, dimensionExpr, arrayExpr, arrayEntries}
 
 end Cert
 
