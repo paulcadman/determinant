@@ -1,6 +1,6 @@
 module
 
-public meta import Determinant.CertChain.Tactic
+public meta import Determinant.CertChain.Meta
 public meta import Determinant.CertChain.Cert
 
 import Lean
@@ -13,7 +13,7 @@ open Mathlib.Tactic (AtomM)
 open Mathlib.Tactic.Ring
 open Cert
 open BirdDet
-open Tactic
+open Meta
 
 def assertDefEq (actual expected : Expr) : MetaM Unit := do
   unless (← isDefEq actual expected) do

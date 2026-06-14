@@ -15,7 +15,7 @@ open BirdDet
 
 public meta section
 
-namespace Tactic
+namespace Meta
 
 structure BinaryOpApp where
   partialApp : Expr
@@ -103,6 +103,6 @@ def reifyBirdDet (e : Expr) : MetaM BirdDetInfo := do
     throwError "matrix size mismatch: array has {arrayEntries.size} entries, expected {dimension * dimension}"
   return {level, ringType, commRingInst, dimension, dimensionExpr, arrayExpr, arrayEntries}
 
-end Tactic
+end Meta
 
 end

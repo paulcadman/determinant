@@ -1,4 +1,4 @@
 module
 
 public import Determinant.CertChain.Tests.BirdTest
-public import Determinant.CertChain.Tests.TacticTest
+public import Determinant.CertChain.Tests.MetaTest
