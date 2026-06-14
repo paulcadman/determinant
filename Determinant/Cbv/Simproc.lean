@@ -1,7 +1,7 @@
 module
 
-import Determinant.Bird
-import Determinant.CbvOpaqueDefs
+import Determinant.Cbv.Bird
+import Determinant.Cbv.CbvOpaqueDefs
 public import Mathlib.Lean.Expr.Basic
 public meta import Lean.Meta.Tactic.Cbv.Main
 public meta import Lean.Meta.AppBuilder

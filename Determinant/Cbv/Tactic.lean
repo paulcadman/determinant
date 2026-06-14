@@ -1,8 +1,8 @@
 module
 
-public import Determinant.Simproc
-public import Determinant.CbvOpaqueDefs
-public import Determinant.Bird
+public import Determinant.Cbv.Simproc
+public import Determinant.Cbv.CbvOpaqueDefs
+public import Determinant.Cbv.Bird
 public import Mathlib.Tactic.Ring
 public import Mathlib.Tactic.NormNum
 
