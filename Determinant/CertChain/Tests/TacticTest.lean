@@ -197,4 +197,35 @@ run_meta withCtxℤ 3 q(#[1, 0, 0, 0, 1, 0, 0, 0, 1]) do
   unless c01.isZero do
     throwError "expected iter 2 0 1 to be marked zero"
 
+-- 0x0 determinant is 1
+run_meta withCtxℤ 0 q(#[]) do
+  assertCertNorm (← certBirdDet) q((1 : ℤ))
+
+-- 1x1 determinant is the single entry
+run_meta withCtxℤ 1 q(#[5]) do
+  assertCertNorm (← certBirdDet) q((5 : ℤ))
+
+-- 2x2 determinant: 1 * 4 - 2 * 3 = -2
+run_meta withCtxℤ 2 q(#[1, 2, 3, 4]) do
+  assertCertNorm (← certBirdDet) q((-2 : ℤ))
+
+-- Singular 2x2 matrix follows zero paths and certifies determinant 0
+run_meta withCtxℤ 2 q(#[1, 2, 2, 4]) do
+  let c ← certBirdDet
+  assertCertNorm c q((0 : ℤ))
+  unless c.isZero do
+    throwError "expected singular 2x2 determinant to be marked zero"
+
+-- 3x3 identity determinant is 1
+run_meta withCtxℤ 3 q(#[1, 0, 0, 0, 1, 0, 0, 0, 1]) do
+  assertCertNorm (← certBirdDet) q((1 : ℤ))
+
+-- 3x3 diagonal determinant: 2 * 3 * 4 = 24
+run_meta withCtxℤ 3 q(#[2, 0, 0, 0, 3, 0, 0, 0, 4]) do
+  assertCertNorm (← certBirdDet) q((24 : ℤ))
+
+-- 3x3 upper triangular determinant ignores off-diagonal entries
+run_meta withCtxℤ 3 q(#[2, 5, 7, 0, 3, 11, 0, 0, 4]) do
+  assertCertNorm (← certBirdDet) q((24 : ℤ))
+
 end Tests

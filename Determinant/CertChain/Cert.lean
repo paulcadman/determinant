@@ -348,6 +348,27 @@ partial def certTail (t i j lo : Nat) (f mulP : Expr) : CertM sα (Cert sα) := 
 
 end
 
+def certBirdDet : CertM sα (Cert sα) := do
+  let ctx ← read
+  if ctx.dimension == 0
+  then
+    let birdDetZeroPf ← Ctx.applyEqLemma ``birdDet_zero u #[
+      (α : Expr), ctx.commRingInst, ctx.array]
+    let ce ← ctx.eval birdDetZeroPf.rhs
+    return {ce with proof := ← mkEqTrans birdDetZeroPf.proof ce.proof}
+  else
+    let k := ctx.dimension - 1
+    let kSucc ← mkAppM ``HAdd.hAdd #[mkNatLit k, mkNatLit 1]
+    let hn ← mkExpectedTypeHint (← mkEqRefl ctx.dimensionExpr) (← mkEq ctx.dimensionExpr kSucc)
+    let birdDetEq ← Ctx.applyEqLemma ``birdDet_eq u #[α, ctx.commRingInst, ctx.dimensionExpr, mkNatLit k, ctx.array, hn]
+    let some ⟨mulP, s, _⟩ := Tactic.destructMul? birdDetEq.rhs
+      | throwError "certBirdDet: expected mul, got: {birdDetEq.rhs}"
+    let cs ← ctx.eval s
+    let ci ← certIter k 0 0
+    let h1 ← Tactic.mkCongrBinop mulP cs.proof ci.proof
+    let cm ← ctx.evalMul cs ci
+    return {cm with proof := ← Tactic.trans3 birdDetEq.proof h1 cm.proof}
+
 end Cert
 
 
