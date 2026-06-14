@@ -46,4 +46,4 @@ elab_rules : tactic
     g.assign (← mkEqTrans detNorm.proof (mkMVar residualGoal))
     replaceMainGoal [residualGoal]
     evalTactic (← `(tactic| try norm_num))
-    evalTactic (← `(tactic| try ring))
+    evalTactic (← `(tactic| try ring_nf))
