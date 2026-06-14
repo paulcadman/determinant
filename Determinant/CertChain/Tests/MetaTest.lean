@@ -111,7 +111,7 @@ run_meta do
   let e : Q(ℤ) := q(birdDet .zero #[1, 2])
   reifyBirdDet e
 
-/-- error: expected an array literal matrix, got { toList := [1, 2, 3] } -/
+/-- error: matrix size mismatch: array has 3 entries, expected 4 -/
 #guard_msgs in 
 run_meta do
   let e : Q(ℤ) := q(birdDet 2 (Array.mk [1,2,3]))

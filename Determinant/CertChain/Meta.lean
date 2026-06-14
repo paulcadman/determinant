@@ -77,7 +77,15 @@ def mkNotLtProof (lo n : Nat) : MetaM Expr := do
 
 /-- Parse an array literal into an array of element exrpessions -/
 def arrayLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
-  getArrayLit? e
+  let e ← zetaReduce (← whnf e)
+  match_expr e with
+  | Array.mk _ xs =>
+      let some elems ← getListLit? xs | return none
+      return some elems
+  | List.toArray _ xs =>
+      let some elems ← getListLit? xs | return none
+      return some elems
+  | _ => return none
 
 structure BirdDetInfo where
   level : Level

@@ -15,6 +15,38 @@ variable
   {R : Type*}
   [CommRing R]
 
+example :
+    Bird.birdDetEntry (R := ℤ)
+      0
+      (#[] : FlatMatrix ℤ) = 1 := by
+  cbv_bird_entry_det
+
+example :
+    Bird.birdDetEntry (R := ℤ)
+      1
+      #[5] = 5 := by
+  cbv_bird_entry_det
+
+example :
+    Bird.birdDetEntry (R := ℤ)
+      2
+      #[1, 2, 3, 4] = -2 := by
+  cbv_bird_entry_det
+
+example :
+    Bird.birdDetEntry (R := ℤ)
+      2
+      #[1, 2, 2, 4] = 0 := by
+  cbv_bird_entry_det
+
+example (a b c d : R) :
+    Bird.birdDetEntry
+      2
+      (symflat%
+        #[a , b,
+          c , d ]) = a * d - b * c := by
+  cbv_bird_entry_det
+
 lemma test_case_19 (a b c d : R) :
     Bird.birdDetEntry
       2
