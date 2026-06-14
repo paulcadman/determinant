@@ -142,21 +142,45 @@ elab "zero_prod_close" : tactic => Elab.Tactic.withMainContext do
 example (x y : ℤ) : x * (y - y) = 0 := by
   zero_prod_close
 
+/-- Construct a `Ctx` for an integer matrix -/
+meta def ctxℤ
+  (dimension : Nat)
+  (array : Q(Array ℤ))
+  : MetaM (Ctx q(Int.instCommSemiring)) := do
+  let some arrayEntries ← arrayLiteral? array
+    | throwError "Ctxℤ: A is not an array literal"
+  let cα ← Common.mkCache q(Int.instCommSemiring)
+  let some rα := cα.rα | unreachable!
+  let dimensionExpr := mkNatLit dimension
+  let getP := mkAppN (mkConst ``BirdDet.get [0]) #[q(ℤ), rα, dimensionExpr, array]
+  let rc := ringCompute cα
+  let commRingInst := rα
+  return {rα, cα, rc, commRingInst, dimension, dimensionExpr, array, arrayEntries, getP}
+
+meta def withCtxℤ
+  {α : Type}
+  (n : Nat)
+  (A : Q(Array ℤ))
+  (action : CertM q(Int.instCommSemiring) α)
+  : MetaM α := do
+    let ctx ← ctxℤ n A
+    action.run ctx |>.run .reducible
+
+-- Check that the proof returned by `certEntry` is valid
+run_meta withCtxℤ 2 q(#[1, 2, 2 + 3, 4]) do
+  let ce ← certEntry 1 0
+  Meta.check ce.proof
+  -- Sanity check value
+  unless ← isDefEq ce.norm q((5 : ℤ)) do
+    throwError "entry {ce.norm} does not normalize to 5"
+
+-- A zero entry is flagged `isZero`
+run_meta withCtxℤ 2 q(#[1, 2, 2 - 2, 4]) do
+  let ce ← certEntry 1 0
+  Meta.check ce.proof
+  unless ce.isZero do
+    throwError "isZero flag not set"
+  unless ← isDefEq ce.norm q((0 : ℤ)) do
+    throwError "zero entry norm is not definitionally zero"
+
 end Tests
-
-
-
-
-
--- structure EqProof where
---   proof : Expr
---   lhs : Expr
---   rhs : Expr
---
--- /-- Instantiate the lemma `name` and return `{proof, lhs, rhs}` -/
--- def applyEqLemma (name : Name) (u : Level) (args : Array Expr) : MetaM EqProof := do
---   let proof := mkAppN (mkConst name [u]) args
---   let some (_, lhs, rhs) := (← inferType proof).eq?
---     | throwError "applyEqLemms: {name} did not produce an equality"
---   return {proof, lhs, rhs}
---
