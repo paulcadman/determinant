@@ -166,13 +166,14 @@ meta def withCtxℤ
     let ctx ← ctxℤ n A
     action.run ctx |>.run .reducible
 
+def assertCertNorm (c : Cert q(Int.instCommSemiring)) (expected : Expr) : MetaM Unit := do
+  Meta.check c.proof
+  assertDefEq c.norm expected
+
 -- Check that the proof returned by `certEntry` is valid
 run_meta withCtxℤ 2 q(#[1, 2, 2 + 3, 4]) do
   let ce ← certEntry 1 0
-  Meta.check ce.proof
-  -- Sanity check value
-  unless ← isDefEq ce.norm q((5 : ℤ)) do
-    throwError "entry {ce.norm} does not normalize to 5"
+  assertCertNorm ce q((5 : ℤ))
 
 -- A zero entry is flagged `isZero`
 run_meta withCtxℤ 2 q(#[1, 2, 2 - 2, 4]) do
@@ -182,5 +183,18 @@ run_meta withCtxℤ 2 q(#[1, 2, 2 - 2, 4]) do
     throwError "isZero flag not set"
   unless ← isDefEq ce.norm q((0 : ℤ)) do
     throwError "zero entry norm is not definitionally zero"
+
+-- 2x2: iter 2 #[1, 2, 3, 4] 1 F_0 0 0 = -det A = -(1*4 - 2*3) = 2
+run_meta withCtxℤ 2 q(#[1, 2, 3, 4]) do
+  let cert ← certIter 1 0 0
+  assertCertNorm cert q((2 : ℤ))
+
+-- 3x3: iter 2 #[1, 0, 0, 0, 1, 0, 0, 0, 1] 2 F_0 0 0 = det A = 1
+run_meta withCtxℤ 3 q(#[1, 0, 0, 0, 1, 0, 0, 0, 1]) do
+  assertCertNorm (← certIter 2 0 0) q((1 : ℤ))
+  let c01 ← certIter 2 0 1
+  assertCertNorm c01 q((0 : ℤ))
+  unless c01.isZero do
+    throwError "expected iter 2 0 1 to be marked zero"
 
 end Tests

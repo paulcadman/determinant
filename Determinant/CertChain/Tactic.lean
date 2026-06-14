@@ -41,6 +41,14 @@ def destructNeg? (e : Expr) : Option UnaryOpApp := Id.run do
   let_expr Neg.neg α inst x := e | return none
   return some ⟨mkApp2 e.getAppFn α inst, x⟩
 
+/-- Given h₁ : x = x' and h₂ : y = y', construct `opP x y = opP x' y'` -/
+def mkCongrBinop (opP h₁ h₂ : Expr) : MetaM Expr := do
+  mkCongr (← mkCongrArg opP h₁) h₂
+
+/-- Chain three equalities `h₁ : a = b`, `h₂ : b = c`, `h₃ : c = d` into `a = d` -/
+def trans3 (h₁ h₂ h₃ : Expr) : MetaM Expr := do
+  mkEqTrans h₁ (← mkEqTrans h₂ h₃)
+
 /-- A proof of `lo < n` by `decide` -/
 def mkLtProof (lo n : Nat) : MetaM Expr := do
   unless lo < n do

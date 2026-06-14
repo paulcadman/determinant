@@ -1,6 +1,7 @@
 module
 
 public import Determinant.CertChain.Bird
+public import Determinant.CertChain.Tactic
 public import Mathlib.Tactic.Ring
 public import Qq
 public meta import Lean.Meta.AppBuilder
@@ -43,6 +44,11 @@ def isZeroVal {e : Q($α)} (val : Common.ExSum RatCoeff sα e) : Bool :=
   match val with
   | .zero => true
   | .add .. => false
+
+structure EqProof where
+  lhs : Expr
+  rhs : Expr
+  proof : Expr
 
 /-- Repackage a `Ring` evaluation result as a certificate. -/
 def toCert {e : Q($α)} (res : Common.Result (Common.ExSum RatCoeff sα) e) : Cert sα :=
@@ -105,10 +111,20 @@ structure AppResult {u : Level} (α : Q(Type u)) where
 
 namespace Ctx
 
+def applyEqLemma (name : Name) (u : Level) (args : Array Expr) : MetaM EqProof := do
+  let proof := mkAppN (mkConst name [u]) args
+  let some (_, lhs, rhs) := (← inferType proof).eq?
+    | throwError "Ctx.applyEqLemma: {name} did not produce an equality"
+  return {lhs, rhs, proof}
+
 def iterP (ctx : Ctx sα) (t : Nat) : Expr :=
   mkAppN
     (mkConst ``iter [u])
     #[α, ctx.commRingInst, ctx.dimensionExpr, ctx.array, mkNatLit t, ctx.getP]
+
+/-- Returns `fun k => iter n A t F_0 k k -/
+def diagFun (ctx : Ctx sα) (t : Nat) : Expr :=
+  mkLambda `k .default (mkConst ``Nat) (mkApp2 (iterP ctx t) (.bvar 0) (.bvar 0))
 
 /-- Constructs an equality between `get i j` and arrayEntries[i * dimenstion + j]
 
@@ -118,17 +134,33 @@ proof: app = result
 -/
 def get (ctx : Ctx sα) (i j : Nat) : MetaM (AppResult α) := do
   let app := mkApp2 ctx.getP (mkNatLit i) (mkNatLit j)
-  let result := ctx.arrayEntries[i * ctx.dimension + j]!
+  let idx := i * ctx.dimension + j
+  let zero : Q($α) := q(0)
+  let result := ctx.arrayEntries.getD idx zero
   let app : Q($α) := app
   let result : Q($α) := result
-  -- let proof ← mkExpectedTypeHint (← mkEqRefl result) (← mkEq app result)
   let proof ← mkExpectedTypeHint (← mkEqRefl result) (← mkEq app result)
   return {app, result, proof}
 
 /-- Certify the evaluation of `e` using the Ring tactic -/
 def eval (ctx : Ctx sα) (e : Q($α)) : AtomM (Cert sα) := do
   let res ← Common.eval rcℕ ctx.rc ctx.cα e
-  return {norm := res.expr, val := res.val, proof := res.proof, isZero := isZeroVal res.val}
+  return toCert res
+
+/-- Certify the evaluation of `a.val + b.val` using the Ring tactic -/
+def evalAdd (ctx : Ctx sα) (a b : Cert sα) : AtomM (Cert sα) := do
+  let res ← Common.evalAdd ctx.rc rcℕ a.val b.val
+  return toCert res
+
+/-- Certify the evaluation of `a.val * b.val` using the Ring tactic -/
+def evalMul (ctx : Ctx sα) (a b : Cert sα) : AtomM (Cert sα) := do
+  let res ← Common.evalMul ctx.rc rcℕ a.val b.val
+  return toCert res
+
+/-- Certify the evaluation of `-a.val` using the Ring tactic -/
+def evalNeg (ctx : Ctx sα) (a : Cert sα) : AtomM (Cert sα) := do
+  let res ← Common.evalNeg ctx.rc ctx.rα a.val
+  return toCert res
 
 end Ctx
 
@@ -149,6 +181,174 @@ def certEntry (i j : Nat) : CertM sα (Cert sα) := do
   let proof ← mkExpectedTypeHint (← mkEqTrans elemApp.proof ce.proof) (← mkEq elemApp.app ce.norm)
   return {ce with proof}
 
+
+mutual
+
+/-- Returns a certificate whose subject is:
+
+```
+iter n A t (get n A) i j
+```
+
+```
+iter n A (t' + 1) F_0 i j
+  = -S * A[i,j] + T       -- iter_succ
+  = dNorm + tNorm         -- congruence
+  = norm                  -- Ring.evalAdd
+```
+
+Where `S = ∑_{k>i} F_t k k` and `T = ∑_{k>i} F_t i k * A[k,j]`
+
+If A[i,j] is certified 0 then S is not required.
+
+-/
+partial def certIter (t i j : Nat) : CertM sα (Cert sα) := do
+  let ctx ← read
+  match t with
+  | 0 => do
+    -- iter n A 0 (get n A) = get n
+    let iterZeroPf ← Ctx.applyEqLemma ``iter_zero u #[
+      (α : Expr), ctx.commRingInst, ctx.dimensionExpr, ctx.array, ctx.getP, mkNatLit i, mkNatLit j]
+    let ce ← certEntry i j
+    return { ce with proof := ← mkEqTrans iterZeroPf.proof ce.proof }
+  | t' + 1 => do
+    let iterSuccPf ← Ctx.applyEqLemma ``iter_succ u #[
+      (α : Expr), ctx.commRingInst, ctx.dimensionExpr, ctx.array, mkNatLit t', ctx.getP,
+      mkNatLit i, mkNatLit j]
+    let some ⟨addP, dTerm, tSum⟩ := Tactic.destructAdd? iterSuccPf.rhs 
+      | throwError "certIter: Expected add, got {iterSuccPf.rhs}"
+    let some ⟨mulP, negS, _⟩ := Tactic.destructMul? dTerm 
+      | throwError "certIter: Expected mul, got {dTerm}"
+    let some ⟨negP, _⟩ := Tactic.destructNeg? negS 
+      | throwError "certIter: Expected neg, got {negS}"
+    -- A[i,j]
+    let ce ← certEntry i j
+    let cd ← 
+      if ce.isZero then
+        zeroProdCert mulP negS ce
+      else do
+        let cdiag ← certDiag t' (i + 1)
+        let cneg ← ctx.evalNeg cdiag
+        let h1 ← Tactic.mkCongrBinop mulP (← mkCongrArg negP cdiag.proof) ce.proof
+        let h2 ← mkCongrFun (← mkCongrArg mulP cneg.proof) ce.norm
+        let cm ← ctx.evalMul cneg ce
+        pure {cm with proof := ← Tactic.trans3 h1 h2 cm.proof}
+    let_expr sumFrom _ _ _ _ f := tSum
+      | throwError "certIter: expected sumFrom ... got {tSum}"
+    let ct ← certTail t' i j (i + 1) f mulP
+    let hAdd ← Tactic.mkCongrBinop addP cd.proof ct.proof
+    let cs ← ctx.evalAdd cd ct
+    return {cs with proof := ← Tactic.trans3 iterSuccPf.proof hAdd cs.proof}
+
+
+/-- Returns a certificate whose subject is:
+
+```
+sumFrom n lo (fun k => iter n A t (get n A) k k)
+```
+
+This is the diagonal tail sum in the Bird determinant formula
+
+```
+∑_{k=lo}^{n-1} F_t k k
+```
+
+It certifies that:
+
+```
+sumFrom n lo diagFun
+  = diagFun lo + sumFrom n (lo + 1) diagFun   -- sumFrom_step (lo < n)
+  = headNorm + tailNorm                       -- congruence
+  = norm                                      -- Ring.evalAdd
+```
+
+-/
+partial def certDiag (t lo : Nat) : CertM sα (Cert sα) := do
+  let ctx ← read
+  if lo < ctx.dimension
+  then do
+    let hLt ← Tactic.mkLtProof lo ctx.dimension
+    let stepEq ← Ctx.applyEqLemma ``sumFrom_step u #[
+      (α : Expr), ctx.commRingInst, ctx.dimensionExpr, mkNatLit lo, ctx.diagFun t, hLt]
+    let some addP := Tactic.destructAdd? stepEq.rhs
+      | throwError "certDiag: unexpected rhs of sumFrom_step {stepEq.rhs}"
+    let ci ← certIter t lo lo
+    let cd ← certDiag t (lo + 1)
+    let hAdd ← Tactic.mkCongrBinop addP.partialApp ci.proof cd.proof
+    let cs ← ctx.evalAdd ci cd
+    return { cs with proof := ← Tactic.trans3 stepEq.proof hAdd cs.proof }
+  else do
+    let hNot ← Tactic.mkNotLtProof lo ctx.dimension
+    let eqProof ←
+      Ctx.applyEqLemma ``sumFrom_stop u #[
+        (α : Expr), ctx.commRingInst, ctx.dimensionExpr, mkNatLit lo, ctx.diagFun t, hNot]
+    zeroCertOf eqProof.lhs eqProof.proof
+
+/-- Returns a certificate whose subject is:
+
+```
+sumFrom n lo (fun k => iter n A t (get n A) i k * get n A k j)
+```
+
+This is the tail sum in the Bird determinant formula:
+
+```
+∑_{k=lo}^{n-1} F_t[i,k] * A[k,j].
+```
+
+It certifies that:
+
+```
+sumFrom n lo f
+  = f lo + sumFrom n (lo + 1) f   -- sumFrom_step (lo < n)
+  = prodNorm + tailNorm           -- congruence
+  = norm                          -- Ring.evalAdd
+```
+
+NB: `f lo` reduces to `F_t[i, lo] * A[lo, j]` so we can certify that separately:
+
+```
+F_t[i,lo] * A[lo,j]
+  = iterNorm * gNorm  -- congruence
+  = prodNorm          -- Ring.evalMul
+```
+
+And we can check if A[lo,j] is zero and avoid certifyin `F_t[i,lo]`.
+
+-/
+partial def certTail (t i j lo : Nat) (f mulP : Expr) : CertM sα (Cert sα) := do
+  let ctx ← read
+  if lo < ctx.dimension
+  then do
+    let hLt ← Tactic.mkLtProof lo ctx.dimension
+    let stepEq ← Ctx.applyEqLemma ``sumFrom_step u #[
+      (α : Expr), ctx.commRingInst, ctx.dimensionExpr, mkNatLit lo, f, hLt]
+    let some addP := Tactic.destructAdd? stepEq.rhs
+      | throwError "certTail: unexpected rhs of sumFrom_step {stepEq.rhs}"
+    -- Certify F_t[i,lo] * A[lo,j]
+    let ce_lo_j ← certEntry lo j
+    let cp ←
+      -- If A[lo,j] = 0 then we can avoid computing the product
+      if ce_lo_j.isZero
+      then zeroProdCert mulP (mkApp2 (ctx.iterP t) (mkNatLit i) (mkNatLit lo)) ce_lo_j
+      else do
+        let ci ← certIter t i lo
+        let hP ← Tactic.mkCongrBinop mulP ci.proof ce_lo_j.proof
+        let cm ← ctx.evalMul ci ce_lo_j
+        pure {cm with proof := ← mkEqTrans hP cm.proof}
+    let ct ← certTail t i j (lo + 1) f mulP
+    let hAdd ← Tactic.mkCongrBinop addP.partialApp cp.proof ct.proof
+    let cs ← ctx.evalAdd cp ct
+    return {cs with proof := ← Tactic.trans3 stepEq.proof hAdd cs.proof}
+  else do
+    let hNot ← Tactic.mkNotLtProof lo ctx.dimension
+    let eqStop ← Ctx.applyEqLemma ``sumFrom_stop u #[
+      (α : Expr), ctx.commRingInst, ctx.dimensionExpr, mkNatLit lo, f, hNot]
+    zeroCertOf eqStop.lhs eqStop.proof
+
+end
+
 end Cert
+
 
 end
