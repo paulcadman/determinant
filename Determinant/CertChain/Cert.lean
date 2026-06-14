@@ -164,8 +164,13 @@ def evalNeg (ctx : Ctx sα) (a : Cert sα) : AtomM (Cert sα) := do
 
 end Ctx
 
+structure CertCache {u : Level} {α : Q(Type u)} (sα : Q(CommSemiring $α)) where
+  entryCache : Std.HashMap (Nat × Nat) (Cert sα) := {}
+  iterCache : Std.HashMap (Nat × Nat × Nat) (Cert sα) := {}
+  diagCache : Std.HashMap (Nat × Nat) (Cert sα) := {}
+
 abbrev CertM {u : Level} {α : Q(Type u)} (sα : Q(CommSemiring $α)) :=
-  ReaderT (Ctx sα) AtomM
+  StateT (CertCache sα) (ReaderT (Ctx sα) AtomM)
 
 /-- Returns a certificate whose subject is `get n A i j`.
 
@@ -175,12 +180,15 @@ get n A i j = elem  -- By rfl
 ```
 -/
 def certEntry (i j : Nat) : CertM sα (Cert sα) := do
+  if let some c := (← get).entryCache[(i, j)]? then
+    return c
   let ctx ← read
   let elemApp ← ctx.get i j
   let ce ← ctx.eval elemApp.result
   let proof ← mkExpectedTypeHint (← mkEqTrans elemApp.proof ce.proof) (← mkEq elemApp.app ce.norm)
-  return {ce with proof}
-
+  let cert := {ce with proof}
+  modify fun s => {s with entryCache := s.entryCache.insert (i, j) cert}
+  return cert
 
 mutual
 
@@ -203,42 +211,46 @@ If A[i,j] is certified 0 then S is not required.
 
 -/
 partial def certIter (t i j : Nat) : CertM sα (Cert sα) := do
+  if let some c := (← get).iterCache[(t, i, j)]? then
+    return c
   let ctx ← read
-  match t with
-  | 0 => do
-    -- iter n A 0 (get n A) = get n
-    let iterZeroPf ← Ctx.applyEqLemma ``iter_zero u #[
-      (α : Expr), ctx.commRingInst, ctx.dimensionExpr, ctx.array, ctx.getP, mkNatLit i, mkNatLit j]
-    let ce ← certEntry i j
-    return { ce with proof := ← mkEqTrans iterZeroPf.proof ce.proof }
-  | t' + 1 => do
-    let iterSuccPf ← Ctx.applyEqLemma ``iter_succ u #[
-      (α : Expr), ctx.commRingInst, ctx.dimensionExpr, ctx.array, mkNatLit t', ctx.getP,
-      mkNatLit i, mkNatLit j]
-    let some ⟨addP, dTerm, tSum⟩ := Meta.destructAdd? iterSuccPf.rhs 
-      | throwError "certIter: Expected add, got {iterSuccPf.rhs}"
-    let some ⟨mulP, negS, _⟩ := Meta.destructMul? dTerm 
-      | throwError "certIter: Expected mul, got {dTerm}"
-    let some ⟨negP, _⟩ := Meta.destructNeg? negS 
-      | throwError "certIter: Expected neg, got {negS}"
-    -- A[i,j]
-    let ce ← certEntry i j
-    let cd ← 
-      if ce.isZero then
-        zeroProdCert mulP negS ce
-      else do
-        let cdiag ← certDiag t' (i + 1)
-        let cneg ← ctx.evalNeg cdiag
-        let h1 ← Meta.mkCongrBinop mulP (← mkCongrArg negP cdiag.proof) ce.proof
-        let h2 ← mkCongrFun (← mkCongrArg mulP cneg.proof) ce.norm
-        let cm ← ctx.evalMul cneg ce
-        pure {cm with proof := ← Meta.trans3 h1 h2 cm.proof}
-    let_expr sumFrom _ _ _ _ f := tSum
-      | throwError "certIter: expected sumFrom ... got {tSum}"
-    let ct ← certTail t' i j (i + 1) f mulP
-    let hAdd ← Meta.mkCongrBinop addP cd.proof ct.proof
-    let cs ← ctx.evalAdd cd ct
-    return {cs with proof := ← Meta.trans3 iterSuccPf.proof hAdd cs.proof}
+  let cert ← match t with
+    | 0 => do
+      -- iter n A 0 (get n A) = get n
+      let iterZeroPf ← Ctx.applyEqLemma ``iter_zero u #[
+        (α : Expr), ctx.commRingInst, ctx.dimensionExpr, ctx.array, ctx.getP, mkNatLit i, mkNatLit j]
+      let ce ← certEntry i j
+      return { ce with proof := ← mkEqTrans iterZeroPf.proof ce.proof }
+    | t' + 1 => do
+      let iterSuccPf ← Ctx.applyEqLemma ``iter_succ u #[
+        (α : Expr), ctx.commRingInst, ctx.dimensionExpr, ctx.array, mkNatLit t', ctx.getP,
+        mkNatLit i, mkNatLit j]
+      let some ⟨addP, dTerm, tSum⟩ := Meta.destructAdd? iterSuccPf.rhs 
+        | throwError "certIter: Expected add, got {iterSuccPf.rhs}"
+      let some ⟨mulP, negS, _⟩ := Meta.destructMul? dTerm 
+        | throwError "certIter: Expected mul, got {dTerm}"
+      let some ⟨negP, _⟩ := Meta.destructNeg? negS 
+        | throwError "certIter: Expected neg, got {negS}"
+      -- A[i,j]
+      let ce ← certEntry i j
+      let cd ← 
+        if ce.isZero then
+          zeroProdCert mulP negS ce
+        else do
+          let cdiag ← certDiag t' (i + 1)
+          let cneg ← ctx.evalNeg cdiag
+          let h1 ← Meta.mkCongrBinop mulP (← mkCongrArg negP cdiag.proof) ce.proof
+          let h2 ← mkCongrFun (← mkCongrArg mulP cneg.proof) ce.norm
+          let cm ← ctx.evalMul cneg ce
+          pure {cm with proof := ← Meta.trans3 h1 h2 cm.proof}
+      let_expr sumFrom _ _ _ _ f := tSum
+        | throwError "certIter: expected sumFrom ... got {tSum}"
+      let ct ← certTail t' i j (i + 1) f mulP
+      let hAdd ← Meta.mkCongrBinop addP cd.proof ct.proof
+      let cs ← ctx.evalAdd cd ct
+      pure {cs with proof := ← Meta.trans3 iterSuccPf.proof hAdd cs.proof}
+  modify fun s => {s with iterCache := s.iterCache.insert (t, i, j) cert}
+  return cert
 
 
 /-- Returns a certificate whose subject is:
@@ -264,25 +276,30 @@ sumFrom n lo diagFun
 
 -/
 partial def certDiag (t lo : Nat) : CertM sα (Cert sα) := do
+  if let some c := (← get).diagCache[(t, lo)]? then
+    return c
   let ctx ← read
-  if lo < ctx.dimension
-  then do
-    let hLt ← Meta.mkLtProof lo ctx.dimension
-    let stepEq ← Ctx.applyEqLemma ``sumFrom_step u #[
-      (α : Expr), ctx.commRingInst, ctx.dimensionExpr, mkNatLit lo, ctx.diagFun t, hLt]
-    let some addP := Meta.destructAdd? stepEq.rhs
-      | throwError "certDiag: unexpected rhs of sumFrom_step {stepEq.rhs}"
-    let ci ← certIter t lo lo
-    let cd ← certDiag t (lo + 1)
-    let hAdd ← Meta.mkCongrBinop addP.partialApp ci.proof cd.proof
-    let cs ← ctx.evalAdd ci cd
-    return { cs with proof := ← Meta.trans3 stepEq.proof hAdd cs.proof }
-  else do
-    let hNot ← Meta.mkNotLtProof lo ctx.dimension
-    let eqProof ←
-      Ctx.applyEqLemma ``sumFrom_stop u #[
-        (α : Expr), ctx.commRingInst, ctx.dimensionExpr, mkNatLit lo, ctx.diagFun t, hNot]
-    zeroCertOf eqProof.lhs eqProof.proof
+  let cert ← 
+    if lo < ctx.dimension
+    then do
+      let hLt ← Meta.mkLtProof lo ctx.dimension
+      let stepEq ← Ctx.applyEqLemma ``sumFrom_step u #[
+        (α : Expr), ctx.commRingInst, ctx.dimensionExpr, mkNatLit lo, ctx.diagFun t, hLt]
+      let some addP := Meta.destructAdd? stepEq.rhs
+        | throwError "certDiag: unexpected rhs of sumFrom_step {stepEq.rhs}"
+      let ci ← certIter t lo lo
+      let cd ← certDiag t (lo + 1)
+      let hAdd ← Meta.mkCongrBinop addP.partialApp ci.proof cd.proof
+      let cs ← ctx.evalAdd ci cd
+      return { cs with proof := ← Meta.trans3 stepEq.proof hAdd cs.proof }
+    else do
+      let hNot ← Meta.mkNotLtProof lo ctx.dimension
+      let eqProof ←
+        Ctx.applyEqLemma ``sumFrom_stop u #[
+          (α : Expr), ctx.commRingInst, ctx.dimensionExpr, mkNatLit lo, ctx.diagFun t, hNot]
+      zeroCertOf eqProof.lhs eqProof.proof
+  modify fun s => {s with diagCache := s.diagCache.insert (t, lo) cert}
+  return cert
 
 /-- Returns a certificate whose subject is:
 

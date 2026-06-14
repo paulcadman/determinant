@@ -164,7 +164,7 @@ meta def withCtxℤ
   (action : CertM q(Int.instCommSemiring) α)
   : MetaM α := do
     let ctx ← ctxℤ n A
-    action.run ctx |>.run .reducible
+    action.run' {} |>.run ctx |>.run .reducible
 
 def assertCertNorm (c : Cert q(Int.instCommSemiring)) (expected : Expr) : MetaM Unit := do
   Meta.check c.proof

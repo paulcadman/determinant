@@ -25,7 +25,6 @@ example : birdDet 2 #[1, 2, 2, 4] = (0 : ℤ) := by
 example (a b c d : R) : birdDet 2 #[a, b, c, d] = a * d - b * c := by
   cert_bird_det
 
-set_option maxHeartbeats 1000000 in
 lemma test_case_8 :
     birdDet 8
       (#[ 2,  0, -1,  0,  0,  0,  0,  0,

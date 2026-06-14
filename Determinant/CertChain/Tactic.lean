@@ -38,7 +38,7 @@ elab_rules : tactic
       arrayEntries := info.arrayEntries
       getP,
     }
-    let detNorm ← certBirdDet.run ctx |>.run .reducible
+    let detNorm ← certBirdDet.run' {} |>.run ctx |>.run .reducible
     let some rhs ← checkTypeQ rhs α
       | throwError "cert_bird_det: RHS does not have expected type{indentExpr α}"
     let .mvar residualGoal ← mkFreshExprMVar (← mkEq detNorm.norm rhs)
