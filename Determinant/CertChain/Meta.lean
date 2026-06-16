@@ -26,20 +26,49 @@ structure UnaryOpApp where
   partialApp : Expr
   x : Expr
 
-/-- Destructure `@HAdd.hAdd α α α inst x y` into `⟨partialApp, x, y⟩`. -/
-def destructAdd? (e : Expr) : Option BinaryOpApp := Id.run do
-  let_expr HAdd.hAdd α β γ inst x y := e | return none
-  return some ⟨mkApp4 e.getAppFn α β γ inst, x, y⟩
+/-- A convenience type representing an equality roof `proof : lhs = rhs`. -/
+structure EqProof {u : Level} (α : Q(Type u)) where
+  lhs : Q($α)
+  rhs : Q($α)
+  proof : Q($lhs = $rhs)
 
-/-- Destructure `@HMul.hMul α α α inst x y` into `⟨partialApp, x, y⟩`. -/
-def destructMul? (e : Expr) : Option BinaryOpApp := Id.run do
-  let_expr HMul.hMul α β γ inst x y := e | return none
-  return some ⟨mkApp4 e.getAppFn α β γ inst, x, y⟩ 
+/-- Parse an `EqProof` or throw -/
+def expectProof {u : Level} {α : Q(Type u)} (proof : Expr) : MetaM (EqProof α) := do
+  let some (_, lhs, rhs) := (← inferType proof).eq?
+    | throwError "expectProof: proof is not an equality: {proof}"
+  let some lhs ← checkTypeQ lhs α
+    | throwError "expectProof: lhs does not have expected type{indentExpr α}"
+  let some rhs ← checkTypeQ rhs α
+    | throwError "expectProof: rhs does not have expected type{indentExpr α}"
+  let proof ← mkExpectedTypeHint proof (← mkEq lhs rhs)
+  return {lhs, rhs, proof}
 
-/-- Destructure `@Neg.neg α inst x` into `⟨partialApp, x⟩`. -/
-def destructNeg? (e : Expr) : Option UnaryOpApp := Id.run do
-  let_expr Neg.neg α inst x := e | return none
-  return some ⟨mkApp2 e.getAppFn α inst, x⟩
+/-- Parse an addition expression or throw. -/
+def expectAdd (context : String) (e : Expr) : MetaM BinaryOpApp := do
+  match_expr e with
+  | HAdd.hAdd α β γ inst x y =>
+      return ⟨mkApp4 e.getAppFn α β γ inst, x, y⟩
+  | _ => throwError "{context}: expected add, got {e}"
+
+/-- Parse a multiplication expression or throw. -/
+def expectMul (context : String) (e : Expr) : MetaM BinaryOpApp := do
+  match_expr e with
+  | HMul.hMul α β γ inst x y =>
+      return ⟨mkApp4 e.getAppFn α β γ inst, x, y⟩
+  | _ => throwError "{context}: expected mul, got {e}"
+
+/-- Parse a negation expression or throw. -/
+def expectNeg (context : String) (e : Expr) : MetaM UnaryOpApp := do
+  match_expr e with
+  | Neg.neg α inst x =>
+      return ⟨mkApp2 e.getAppFn α inst, x⟩
+  | _ => throwError "{context}: expected neg, got {e}"
+
+/-- Extract the function argument from a `sumFrom` expression. -/
+def expectSumFromFun (context : String) (e : Expr) : MetaM Expr := do
+  let_expr sumFrom _ _ _ _ f := e
+    | throwError "{context}: expected sumFrom, got {e}"
+  return f
 
 /-- Given h₁ : x = x' and h₂ : y = y', construct `opP x y = opP x' y'` -/
 def mkCongrBinop (opP h₁ h₂ : Expr) : MetaM Expr := do
@@ -87,6 +116,7 @@ def arrayLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
       return some elems
   | _ => return none
 
+/-- Information parsed by `reifyBirdDet` -/
 structure BirdDetInfo where
   level : Level
   ringType : Expr

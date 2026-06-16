@@ -23,29 +23,26 @@ def assertLevelDefEq (actual expected : Level) : MetaM Unit := do
   unless (← isLevelDefEq actual expected) do
     throwError m!"expected level {expected}, got {actual}"
 
--- Test destructMul?
+-- Test expectMul
 run_meta do
   let m := q((2 : ℤ) * 3)
-  let some app := destructMul? m
-    | throwError m!"{m} is not a multiplication"
+  let app ← expectMul "test expectMul" m
   let recombined := mkApp2 app.partialApp app.x app.y
   let value ← reduce recombined
   assertDefEq value q((6 : ℤ))
 
--- Test destructAdd?
+-- Test expectAdd
 run_meta do
   let m := q((2 : ℤ) + 3)
-  let some app := destructAdd? m
-    | throwError m!"{m} is not an addition"
+  let app ← expectAdd "test expectAdd" m
   let recombined := mkApp2 app.partialApp app.x app.y
   let value ← reduce recombined
   assertDefEq value q((5 : ℤ))
 
--- Test destructNeg?
+-- Test expectNeg
 run_meta do
   let m := q(-(2 : ℤ))
-  let some app := destructNeg? m
-    | throwError m!"{m} is not a negation"
+  let app ← expectNeg "test expectNeg" m
   let recombined := mkApp app.partialApp app.x
   let value ← reduce recombined
   assertDefEq value q((-2 : ℤ))
@@ -123,8 +120,7 @@ elab "zero_prod_close" : tactic => Elab.Tactic.withMainContext do
   let g ← Elab.Tactic.getMainGoal
   let some (_, lhs, _) := (← instantiateMVars (← g.getType)).eq?
     | throwError "zero_prod_close: expected an equality"
-  let some ⟨mulP, x, z⟩  := destructMul? lhs
-    | throwError "zero_prod_close: expected a product"
+  let ⟨mulP, x, z⟩ ← expectMul "zero_prod_close" lhs
   let ⟨u, α, _⟩ ← inferTypeQ' lhs
   let sα : Q(CommSemiring $α) ← synthInstanceQ q(CommSemiring $α)
   let cα ← Common.mkCache sα
