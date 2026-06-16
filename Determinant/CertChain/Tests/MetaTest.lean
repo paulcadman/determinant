@@ -4,6 +4,7 @@ public meta import Determinant.CertChain.Meta
 public meta import Determinant.CertChain.Cert
 
 import Lean
+import Mathlib.Algebra.Ring.Int.Defs
 import Qq
 
 namespace Tests
@@ -15,6 +16,8 @@ open Cert
 open BirdDet
 open Meta
 
+@[irreducible] def wrappedIntCommRing : CommRing ℤ := inferInstance
+
 def assertDefEq (actual expected : Expr) : MetaM Unit := do
   unless (← isDefEq actual expected) do
     throwError m!"expected{indentExpr expected}\ngot{indentExpr actual}"
@@ -23,29 +26,26 @@ def assertLevelDefEq (actual expected : Level) : MetaM Unit := do
   unless (← isLevelDefEq actual expected) do
     throwError m!"expected level {expected}, got {actual}"
 
--- Test destructMul?
+-- Test expectMul
 run_meta do
   let m := q((2 : ℤ) * 3)
-  let some app := destructMul? m
-    | throwError m!"{m} is not a multiplication"
+  let app ← expectMul "test expectMul" m
   let recombined := mkApp2 app.partialApp app.x app.y
   let value ← reduce recombined
   assertDefEq value q((6 : ℤ))
 
--- Test destructAdd?
+-- Test expectAdd
 run_meta do
   let m := q((2 : ℤ) + 3)
-  let some app := destructAdd? m
-    | throwError m!"{m} is not an addition"
+  let app ← expectAdd "test expectAdd" m
   let recombined := mkApp2 app.partialApp app.x app.y
   let value ← reduce recombined
   assertDefEq value q((5 : ℤ))
 
--- Test destructNeg?
+-- Test expectNeg
 run_meta do
   let m := q(-(2 : ℤ))
-  let some app := destructNeg? m
-    | throwError m!"{m} is not a negation"
+  let app ← expectNeg "test expectNeg" m
   let recombined := mkApp app.partialApp app.x
   let value ← reduce recombined
   assertDefEq value q((-2 : ℤ))
@@ -82,6 +82,7 @@ run_meta do
   let info ← reifyBirdDet e
   assertLevelDefEq info.level .zero
   assertDefEq info.ringType q(ℤ)
+  assertDefEq info.birdRingInst q(Int.instCommRing)
   assertDefEq info.dimensionExpr q((2 : Nat))
   unless info.dimension == 2 do
     throwError m!"expected dimension 2, got {info.dimension}"
@@ -92,6 +93,22 @@ run_meta do
   assertDefEq info.arrayEntries[1]! q((2 : ℤ))
   assertDefEq info.arrayEntries[2]! q((3 : ℤ))
   assertDefEq info.arrayEntries[3]! q((4 : ℤ))
+
+-- The Bird-side instance has to be the exact instance from the reified term.
+-- Rebuilding Bird terms with the ring-computation instance can lose
+-- definitional equality with the original goal.
+run_meta do
+  let e : Q(ℤ) := q(@birdDet ℤ wrappedIntCommRing 1 #[1])
+  let info ← reifyBirdDet e
+  let cα ← Common.mkCache q(Int.instCommSemiring)
+  let some rα := cα.rα | unreachable!
+  let withBirdInst := mkAppN (mkConst ``birdDet [.zero])
+    #[info.ringType, info.birdRingInst, info.dimensionExpr, info.arrayExpr]
+  let withRingInst := mkAppN (mkConst ``birdDet [.zero])
+    #[info.ringType, rα, info.dimensionExpr, info.arrayExpr]
+  assertDefEq withBirdInst e
+  if ← isDefEq withRingInst e then
+    throwError "expected ring-cache instance not to be definitionally equal to the Bird instance"
 
 /-- error: matrix size mismatch: array has 2 entries, expected 4 -/
 #guard_msgs in
@@ -123,8 +140,7 @@ elab "zero_prod_close" : tactic => Elab.Tactic.withMainContext do
   let g ← Elab.Tactic.getMainGoal
   let some (_, lhs, _) := (← instantiateMVars (← g.getType)).eq?
     | throwError "zero_prod_close: expected an equality"
-  let some ⟨mulP, x, z⟩  := destructMul? lhs
-    | throwError "zero_prod_close: expected a product"
+  let ⟨mulP, x, z⟩ ← expectMul "zero_prod_close" lhs
   let ⟨u, α, _⟩ ← inferTypeQ' lhs
   let sα : Q(CommSemiring $α) ← synthInstanceQ q(CommSemiring $α)
   let cα ← Common.mkCache sα
@@ -154,8 +170,8 @@ meta def ctxℤ
   let dimensionExpr := mkNatLit dimension
   let getP := mkAppN (mkConst ``BirdDet.get [0]) #[q(ℤ), rα, dimensionExpr, array]
   let rc := ringCompute cα
-  let commRingInst := rα
-  return {rα, cα, rc, commRingInst, dimension, dimensionExpr, array, arrayEntries, getP}
+  let birdRingInst := rα
+  return {rα, cα, rc, birdRingInst, dimension, dimensionExpr, array, arrayEntries, getP}
 
 meta def withCtxℤ
   {α : Type}
