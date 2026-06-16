@@ -120,27 +120,36 @@ def arrayLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
 /-- Information parsed by `reifyBirdDet` -/
 structure BirdDetInfo where
   level : Level
-  ringType : Expr
-  birdRingInst : Expr
+  ringType : Q(Type level)
+  birdRingInst : Q(CommRing $ringType)
   dimension : Nat
-  dimensionExpr : Expr
-  arrayExpr : Expr
-  arrayEntries : Array Expr
+  dimensionExpr : Q(Nat)
+  arrayExpr : Q(Array $ringType)
+  arrayEntries : Array Q($ringType)
 
 def reifyBirdDet (e : Expr) : MetaM BirdDetInfo := do
   let e ← instantiateMVars e
-  let_expr birdDet ringType birdRingInst dimensionExpr arrayExpr := e
+  let ⟨level, α, _⟩ ← inferTypeQ' e
+  let_expr birdDet _ birdRingInst dimensionExpr arrayExpr := e
     | throwError "expected an application of `birdDet, got {e}"
-  let .const _ [level] := e.getAppFn
-    | throwError "expected `birdDet` to have exactly one universe level"
+  let some birdRingInst ← checkTypeQ birdRingInst q(CommRing $α)
+    | throwError "expected `birdDet` ring instance to have type{indentExpr q(CommRing $α)}"
   let dimensionExpr ← whnf dimensionExpr
+  let some dimensionExpr ← checkTypeQ dimensionExpr q(Nat)
+    | throwError "expected the dimension to have type `Nat`, got {dimensionExpr}"
   let some dimension := dimensionExpr.rawNatLit?
     | throwError "expected the dimension to be a `Nat` literal, got {dimensionExpr}"
+  let some arrayExpr ← checkTypeQ arrayExpr q(Array $α)
+    | throwError "expected the array to have type{indentExpr q(Array $α)}"
   let some arrayEntries ← arrayLiteral? arrayExpr
     | throwError "expected an array literal matrix, got {arrayExpr}"
   unless arrayEntries.size == dimension * dimension do
     throwError "matrix size mismatch: array has {arrayEntries.size} entries, expected {dimension * dimension}"
-  return {level, ringType, birdRingInst, dimension, dimensionExpr, arrayExpr, arrayEntries}
+  let arrayEntries ← arrayEntries.mapM fun entry => do
+    let some entry ← checkTypeQ entry α
+      | throwError "expected array entry to have type{indentExpr α}"
+    return entry
+  return {level, ringType := α, birdRingInst, dimension, dimensionExpr, arrayExpr, arrayEntries}
 
 end Meta
 

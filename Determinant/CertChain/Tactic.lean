@@ -20,18 +20,22 @@ elab_rules : tactic
     let some (_, lhs, rhs) := target.eq?
       | throwError "cert_bird_det: Expected an equality goal"
     let info ← Meta.reifyBirdDet lhs
-    let u : Level := info.level
-    let α : Q(Type u) := info.ringType
-    let sα : Q(CommSemiring $α) ← synthInstanceQ q(CommSemiring $α)
-    let cα ← Common.mkCache sα
-    let some rα := cα.rα
-      | throwError "cert_bird_det: `CommRing {α}` instance required"
-    let getP := mkAppN (mkConst ``BirdDet.get [u]) #[info.ringType, info.birdRingInst, info.dimensionExpr, info.arrayExpr]
+    let u := info.level
+    let α := info.ringType
+    let birdRingInst := info.birdRingInst
+    let sαExpr := mkAppN (mkConst ``CommRing.toCommSemiring [u]) #[α, birdRingInst]
+    let some sα ← checkTypeQ sαExpr q(CommSemiring $α)
+      | throwError "cert_bird_det: failed to derive `CommSemiring` from Bird ring instance"
+    let cα : Common.Cache sα := {
+      rα := some birdRingInst
+      dsα := none
+      czα := none
+    }
+    let getP := mkAppN (mkConst ``BirdDet.get [u]) #[info.ringType, birdRingInst, info.dimensionExpr, info.arrayExpr]
     let ctx : Ctx sα := {
-      rα,
       cα,
       rc := ringCompute cα,
-      birdRingInst := info.birdRingInst
+      birdRingInst
       dimension := info.dimension
       dimensionExpr := info.dimensionExpr
       array := info.arrayExpr

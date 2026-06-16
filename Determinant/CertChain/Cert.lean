@@ -86,7 +86,6 @@ def zeroProdCert (mulP x : Expr) (cz : Cert sα) : MetaM (Cert sα) := do
 
 /-- The context for a `certBirdDet` computation -/
 structure Ctx {u : Level} {α : Q(Type u)} (sα : Q(CommSemiring $α)) where
-  rα : Q(CommRing $α)
   /-- `Ring` evaluation cache for the scalar ring. -/
   cα : Common.Cache sα
   /-- Proof-producing ring arithmetic. -/
@@ -95,10 +94,11 @@ structure Ctx {u : Level} {α : Q(Type u)} (sα : Q(CommSemiring $α)) where
   The exact `CommRing` instance argument from the reified `birdDet` term.
 
   Bird terms and lemmas are built with this instance so their subjects stay
-  definitionally equal to the original goal. Do not replace this with `rα` from
-  the ring cache unless they are known to be definitionally equal.
+  definitionally equal to the original goal. The ring cache should also be
+  constructed with this same instance, so ring normalization and Bird term
+  construction do not accidentally use different instance expressions.
   -/
-  birdRingInst : Expr
+  birdRingInst : Q(CommRing $α)
   dimension : Nat
   dimensionExpr : Expr
   array : Expr
@@ -185,7 +185,7 @@ def evalMul (ctx : Ctx sα) (a b : Cert sα) : AtomM (Cert sα) := do
 
 /-- Certify the evaluation of `-a.val` using the Ring tactic -/
 def evalNeg (ctx : Ctx sα) (a : Cert sα) : AtomM (Cert sα) := do
-  let res ← Common.evalNeg ctx.rc ctx.rα a.val
+  let res ← Common.evalNeg ctx.rc ctx.birdRingInst a.val
   return toCert res
 
 /-- Combine two certificates through addition, then normalize the sum. -/
@@ -407,6 +407,8 @@ def certBirdDet : CertM sα (Cert sα) := do
     let k := ctx.dimension - 1
     let birdDetEq ← ctx.birdDetEq k
     let ⟨mulP, s, _⟩ ← Meta.expectMul "certBirdDet" birdDetEq.rhs
+    -- TODO: Try constructing s directly instead of parsing it out, especially
+    -- if mulP can be constructed on Ctx.
     let cs ← ctx.eval s
     let ci ← certIter k 0 0
     let cm ← ctx.certMul mulP cs ci
