@@ -58,9 +58,9 @@ def isZeroVal {e : Q($α)} (val : Common.ExSum RatCoeff sα e) : Bool :=
 def toCert {e : Q($α)} (res : Common.Result (Common.ExSum RatCoeff sα) e) : Cert sα :=
   { norm := res.expr, val := res.val, proof := res.proof, isZero := isZeroVal res.val }
 
-/-- Prepend an equality proof to a certificate:
+/-- Chain an equality proof into a certificate:
 if `h : e = c.subject` and `c.proof : c.subject = c.norm`, return `e = c.norm`. -/
-def prependProof (c : Cert sα) (h : Expr) : MetaM (Cert sα) := do
+def chain (c : Cert sα) (h : Expr) : MetaM (Cert sα) := do
   return {c with proof := ← mkEqTrans h c.proof}
 
 /-- Cast an existing `proof : subject = 0` as a certificate for the cannonical zero -/
@@ -81,7 +81,7 @@ def zeroProdCert (mulP x : Expr) (cz : Cert sα) : MetaM (Cert sα) := do
   let h2 ← mkAppM ``mul_zero #[x]
   -- x * (cz.subject) = 0
   let h ← mkEqTrans h1 h2
-  let eq ← Meta.expectProof (α := α) h1
+  let eq ← Meta.expectProof (α := α) "zeroProdCert" h1
   zeroCertOf eq.lhs h
 
 /-- The context for a `certBirdDet` computation -/
@@ -91,9 +91,14 @@ structure Ctx {u : Level} {α : Q(Type u)} (sα : Q(CommSemiring $α)) where
   cα : Common.Cache sα
   /-- Proof-producing ring arithmetic. -/
   rc : Common.RingCompute RatCoeff sα
-  /-- `CommRing` expression, using the same spelilng as the
-    `birdDet goal.-/
-  commRingInst : Expr
+  /--
+  The exact `CommRing` instance argument from the reified `birdDet` term.
+
+  Bird terms and lemmas are built with this instance so their subjects stay
+  definitionally equal to the original goal. Do not replace this with `rα` from
+  the ring cache unless they are known to be definitionally equal.
+  -/
+  birdRingInst : Expr
   dimension : Nat
   dimensionExpr : Expr
   array : Expr
@@ -106,19 +111,46 @@ namespace Ctx
 
 def applyEqLemma (name : Name) (u : Level) (args : Array Expr) : MetaM (EqProof α) := do
   let proof := mkAppN (mkConst name [u]) args
-  try
-    Meta.expectProof (α := α) proof
-  catch _ =>
-    throwError "Ctx.applyEqLemma: {name} did not produce an equality over{indentExpr α}"
+  Meta.expectProof (α := α) ("Ctx.applyEqLemma: " ++ toString name) proof
 
 def iterP (ctx : Ctx sα) (t : Nat) : Expr :=
   mkAppN
     (mkConst ``iter [u])
-    #[α, ctx.commRingInst, ctx.dimensionExpr, ctx.array, mkNatLit t, ctx.getP]
+    #[α, ctx.birdRingInst, ctx.dimensionExpr, ctx.array, mkNatLit t, ctx.getP]
 
 /-- Returns `fun k => iter n A t F_0 k k -/
 def diagFun (ctx : Ctx sα) (t : Nat) : Expr :=
   mkLambda `k .default (mkConst ``Nat) (mkApp2 (iterP ctx t) (.bvar 0) (.bvar 0))
+
+def sumFromStopEq (ctx : Ctx sα) (lo : Nat) (f : Expr) : MetaM (EqProof α) := do
+  let hNot ← Meta.mkNotLtProof lo ctx.dimension
+  Ctx.applyEqLemma (α := α) ``sumFrom_stop u #[
+    (α : Expr), ctx.birdRingInst, ctx.dimensionExpr, mkNatLit lo, f, hNot]
+
+def sumFromStepEq (ctx : Ctx sα) (lo : Nat) (f : Expr) : MetaM (EqProof α) := do
+  let hLt ← Meta.mkLtProof lo ctx.dimension
+  Ctx.applyEqLemma (α := α) ``sumFrom_step u #[
+    (α : Expr), ctx.birdRingInst, ctx.dimensionExpr, mkNatLit lo, f, hLt]
+
+def iterZeroEq (ctx : Ctx sα) (i j : Nat) : MetaM (EqProof α) :=
+  Ctx.applyEqLemma (α := α) ``iter_zero u #[
+    (α : Expr), ctx.birdRingInst, ctx.dimensionExpr, ctx.array, ctx.getP,
+    mkNatLit i, mkNatLit j]
+
+def iterSuccEq (ctx : Ctx sα) (t i j : Nat) : MetaM (EqProof α) :=
+  Ctx.applyEqLemma (α := α) ``iter_succ u #[
+    (α : Expr), ctx.birdRingInst, ctx.dimensionExpr, ctx.array, mkNatLit t,
+    ctx.getP, mkNatLit i, mkNatLit j]
+
+def birdDetZeroEq (ctx : Ctx sα) : MetaM (EqProof α) :=
+  Ctx.applyEqLemma (α := α) ``birdDet_zero u #[
+    (α : Expr), ctx.birdRingInst, ctx.array]
+
+def birdDetEq (ctx : Ctx sα) (k : Nat) : MetaM (EqProof α) := do
+  let kSucc ← mkAppM ``HAdd.hAdd #[mkNatLit k, mkNatLit 1]
+  let hn ← mkExpectedTypeHint (← mkEqRefl ctx.dimensionExpr) (← mkEq ctx.dimensionExpr kSucc)
+  Ctx.applyEqLemma (α := α) ``birdDet_eq u #[
+    α, ctx.birdRingInst, ctx.dimensionExpr, mkNatLit k, ctx.array, hn]
 
 /-- Constructs an equality between `get i j` and arrayEntries[i * dimenstion + j]
 
@@ -160,19 +192,19 @@ def evalNeg (ctx : Ctx sα) (a : Cert sα) : AtomM (Cert sα) := do
 def certAdd (ctx : Ctx sα) (addP : Expr) (a b : Cert sα) : AtomM (Cert sα) := do
   let h ← Meta.mkCongrBinop addP a.proof b.proof
   let c ← ctx.evalAdd a b
-  c.prependProof h
+  c.chain h
 
 /-- Combine two certificates through multiplication, then normalize the product. -/
 def certMul (ctx : Ctx sα) (mulP : Expr) (a b : Cert sα) : AtomM (Cert sα) := do
   let h ← Meta.mkCongrBinop mulP a.proof b.proof
   let c ← ctx.evalMul a b
-  c.prependProof h
+  c.chain h
 
 /-- Combine a certificate through negation, then normalize the result. -/
 def certNeg (ctx : Ctx sα) (negP : Expr) (a : Cert sα) : AtomM (Cert sα) := do
   let h ← mkCongrArg negP a.proof
   let c ← ctx.evalNeg a
-  c.prependProof h
+  c.chain h
 
 end Ctx
 
@@ -202,15 +234,13 @@ def certEntry (i j : Nat) : CertM sα (Cert sα) := do
   let ctx ← read
   let elemApp ← ctx.get i j
   let ce ← ctx.eval elemApp.rhs
-  let cert ← ce.prependProof elemApp.proof
+  let cert ← ce.chain elemApp.proof
   modify fun s => {s with entryCache := s.entryCache.insert (i, j) cert}
   return cert
 
 def certSumFromStop (lo : Nat) (f : Expr) : CertM sα (Cert sα) := do
   let ctx ← read
-  let hNot ← Meta.mkNotLtProof lo ctx.dimension
-  let eqStop ← Ctx.applyEqLemma (α := α) ``sumFrom_stop u #[
-    (α : Expr), ctx.commRingInst, ctx.dimensionExpr, mkNatLit lo, f, hNot]
+  let eqStop ← ctx.sumFromStopEq lo f
   zeroCertOf eqStop.lhs eqStop.proof
 
 /-- Certify one `sumFrom` step by certifying the head and recursive tail, then
@@ -219,14 +249,12 @@ def certSumFromStep
     (lo : Nat) (f : Expr)
     (head tail : CertM sα (Cert sα)) : CertM sα (Cert sα) := do
   let ctx ← read
-  let hLt ← Meta.mkLtProof lo ctx.dimension
-  let stepEq ← Ctx.applyEqLemma (α := α) ``sumFrom_step u #[
-    (α : Expr), ctx.commRingInst, ctx.dimensionExpr, mkNatLit lo, f, hLt]
+  let stepEq ← ctx.sumFromStepEq lo f
   let addApp ← Meta.expectAdd "certSumFromStep" stepEq.rhs
   let chead ← head
   let ctail ← tail
   let csum ← ctx.certAdd addApp.partialApp chead ctail
-  csum.prependProof stepEq.proof
+  csum.chain stepEq.proof
 
 mutual
 
@@ -255,14 +283,11 @@ partial def certIter (t i j : Nat) : CertM sα (Cert sα) := do
   let cert ← match t with
     | 0 => do
       -- iter n A 0 (get n A) = get n
-      let iterZeroPf ← Ctx.applyEqLemma (α := α) ``iter_zero u #[
-        (α : Expr), ctx.commRingInst, ctx.dimensionExpr, ctx.array, ctx.getP, mkNatLit i, mkNatLit j]
+      let iterZeroPf ← ctx.iterZeroEq i j
       let ce ← certEntry i j
-      ce.prependProof iterZeroPf.proof
+      ce.chain iterZeroPf.proof
     | t' + 1 => do
-      let iterSuccPf ← Ctx.applyEqLemma (α := α) ``iter_succ u #[
-        (α : Expr), ctx.commRingInst, ctx.dimensionExpr, ctx.array, mkNatLit t', ctx.getP,
-        mkNatLit i, mkNatLit j]
+      let iterSuccPf ← ctx.iterSuccEq t' i j
       let ⟨addP, dTerm, tSum⟩ ← Meta.expectAdd "certIter" iterSuccPf.rhs
       let ⟨mulP, negS, _⟩ ← Meta.expectMul "certIter" dTerm
       let ⟨negP, _⟩ ← Meta.expectNeg "certIter" negS
@@ -278,7 +303,7 @@ partial def certIter (t i j : Nat) : CertM sα (Cert sα) := do
       let f ← Meta.expectSumFromFun "certIter" tSum
       let ct ← certTail t' i j (i + 1) f mulP
       let cs ← ctx.certAdd addP cd ct
-      cs.prependProof iterSuccPf.proof
+      cs.chain iterSuccPf.proof
   modify fun s => {s with iterCache := s.iterCache.insert (t, i, j) cert}
   return cert
 
@@ -373,21 +398,19 @@ def certBirdDet : CertM sα (Cert sα) := do
   let ctx ← read
   if ctx.dimension == 0
   then
-    let birdDetZeroPf ← Ctx.applyEqLemma (α := α) ``birdDet_zero u #[
-      (α : Expr), ctx.commRingInst, ctx.array]
+    let birdDetZeroPf ← ctx.birdDetZeroEq
     let ce ← ctx.eval birdDetZeroPf.rhs
-    ce.prependProof birdDetZeroPf.proof
+    ce.chain birdDetZeroPf.proof
   else
+    -- The non-zero `birdDet_eq` branch matches `k + 1` 
+    -- so we set k := `ctx.dimension - 1`.
     let k := ctx.dimension - 1
-    let kSucc ← mkAppM ``HAdd.hAdd #[mkNatLit k, mkNatLit 1]
-    let hn ← mkExpectedTypeHint (← mkEqRefl ctx.dimensionExpr) (← mkEq ctx.dimensionExpr kSucc)
-    let birdDetEq ← Ctx.applyEqLemma (α := α) ``birdDet_eq u #[
-      α, ctx.commRingInst, ctx.dimensionExpr, mkNatLit k, ctx.array, hn]
+    let birdDetEq ← ctx.birdDetEq k
     let ⟨mulP, s, _⟩ ← Meta.expectMul "certBirdDet" birdDetEq.rhs
     let cs ← ctx.eval s
     let ci ← certIter k 0 0
     let cm ← ctx.certMul mulP cs ci
-    cm.prependProof birdDetEq.proof
+    cm.chain birdDetEq.proof
 
 end Cert
 

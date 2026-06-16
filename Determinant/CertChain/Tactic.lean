@@ -26,12 +26,12 @@ elab_rules : tactic
     let cα ← Common.mkCache sα
     let some rα := cα.rα
       | throwError "cert_bird_det: `CommRing {α}` instance required"
-    let getP := mkAppN (mkConst ``BirdDet.get [u]) #[info.ringType, info.commRingInst, info.dimensionExpr, info.arrayExpr]
+    let getP := mkAppN (mkConst ``BirdDet.get [u]) #[info.ringType, info.birdRingInst, info.dimensionExpr, info.arrayExpr]
     let ctx : Ctx sα := {
       rα,
       cα,
       rc := ringCompute cα,
-      commRingInst := info.commRingInst
+      birdRingInst := info.birdRingInst
       dimension := info.dimension
       dimensionExpr := info.dimensionExpr
       array := info.arrayExpr

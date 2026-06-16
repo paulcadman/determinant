@@ -26,20 +26,21 @@ structure UnaryOpApp where
   partialApp : Expr
   x : Expr
 
-/-- A convenience type representing an equality roof `proof : lhs = rhs`. -/
+/-- A convenience type representing an equality proof `proof : lhs = rhs`. -/
 structure EqProof {u : Level} (α : Q(Type u)) where
   lhs : Q($α)
   rhs : Q($α)
   proof : Q($lhs = $rhs)
 
 /-- Parse an `EqProof` or throw -/
-def expectProof {u : Level} {α : Q(Type u)} (proof : Expr) : MetaM (EqProof α) := do
+def expectProof {u : Level} {α : Q(Type u)} (context : String) (proof : Expr) :
+    MetaM (EqProof α) := do
   let some (_, lhs, rhs) := (← inferType proof).eq?
-    | throwError "expectProof: proof is not an equality: {proof}"
+    | throwError "{context}: expected equality proof, got {proof}"
   let some lhs ← checkTypeQ lhs α
-    | throwError "expectProof: lhs does not have expected type{indentExpr α}"
+    | throwError "{context}: lhs does not have expected type{indentExpr α}"
   let some rhs ← checkTypeQ rhs α
-    | throwError "expectProof: rhs does not have expected type{indentExpr α}"
+    | throwError "{context}: rhs does not have expected type{indentExpr α}"
   let proof ← mkExpectedTypeHint proof (← mkEq lhs rhs)
   return {lhs, rhs, proof}
 
@@ -120,7 +121,7 @@ def arrayLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
 structure BirdDetInfo where
   level : Level
   ringType : Expr
-  commRingInst : Expr
+  birdRingInst : Expr
   dimension : Nat
   dimensionExpr : Expr
   arrayExpr : Expr
@@ -128,7 +129,7 @@ structure BirdDetInfo where
 
 def reifyBirdDet (e : Expr) : MetaM BirdDetInfo := do
   let e ← instantiateMVars e
-  let_expr birdDet ringType commRingInst dimensionExpr arrayExpr := e
+  let_expr birdDet ringType birdRingInst dimensionExpr arrayExpr := e
     | throwError "expected an application of `birdDet, got {e}"
   let .const _ [level] := e.getAppFn
     | throwError "expected `birdDet` to have exactly one universe level"
@@ -139,7 +140,7 @@ def reifyBirdDet (e : Expr) : MetaM BirdDetInfo := do
     | throwError "expected an array literal matrix, got {arrayExpr}"
   unless arrayEntries.size == dimension * dimension do
     throwError "matrix size mismatch: array has {arrayEntries.size} entries, expected {dimension * dimension}"
-  return {level, ringType, commRingInst, dimension, dimensionExpr, arrayExpr, arrayEntries}
+  return {level, ringType, birdRingInst, dimension, dimensionExpr, arrayExpr, arrayEntries}
 
 end Meta
 
