@@ -36,7 +36,7 @@ def iter (n : Nat) (A : Array R) (t : Nat) (F : Nat → Nat → R) : Nat → Nat
     -(sumFrom n (i + 1) fun k => iter n A t F k k) * get n A i j
     + sumFrom n (i + 1) fun k => iter n A t F i k * get n A k j
 
-/-- Scalar-entry Bird deterinant
+/-- Scalar-entry Bird determinant.
 
 This computes Bird determinant by recurrence on matrix entries required by the
 determinant instead of constructing each intermediate matrix. -/

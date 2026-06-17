@@ -163,16 +163,21 @@ meta def ctxℤ
   (dimension : Nat)
   (array : Q(Array ℤ))
   : MetaM (Ctx q(Int.instCommSemiring)) := do
-  let some arrayEntries ← arrayLiteral? array
+  let some rawEntries ← arrayLiteral? array
     | throwError "Ctxℤ: A is not an array literal"
+  let arrayEntries ← rawEntries.mapM fun entry => do
+    let some entry ← checkTypeQ entry q(ℤ)
+      | throwError "Ctxℤ: array entry does not have type ℤ"
+    return entry
   let birdRingInst : Q(CommRing ℤ) := q(Int.instCommRing)
   let cα : Common.Cache q(Int.instCommSemiring) := {
     rα := some birdRingInst
     dsα := none
     czα := none
   }
-  let dimensionExpr := mkNatLit dimension
-  let getP := mkAppN (mkConst ``BirdDet.get [0]) #[q(ℤ), birdRingInst, dimensionExpr, array]
+  let dimensionExpr : Q(Nat) := mkNatLit dimension
+  let getP : Q(Nat → Nat → ℤ) :=
+    mkAppN (mkConst ``BirdDet.get [0]) #[q(ℤ), birdRingInst, dimensionExpr, array]
   let rc := ringCompute cα
   return {cα, rc, birdRingInst, dimension, dimensionExpr, array, arrayEntries, getP}
 

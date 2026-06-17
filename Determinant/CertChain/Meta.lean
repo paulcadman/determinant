@@ -65,19 +65,9 @@ def expectNeg (context : String) (e : Expr) : MetaM UnaryOpApp := do
       return ⟨mkApp2 e.getAppFn α inst, x⟩
   | _ => throwError "{context}: expected neg, got {e}"
 
-/-- Extract the function argument from a `sumFrom` expression. -/
-def expectSumFromFun (context : String) (e : Expr) : MetaM Expr := do
-  let_expr sumFrom _ _ _ _ f := e
-    | throwError "{context}: expected sumFrom, got {e}"
-  return f
-
 /-- Given h₁ : x = x' and h₂ : y = y', construct `opP x y = opP x' y'` -/
 def mkCongrBinop (opP h₁ h₂ : Expr) : MetaM Expr := do
   mkCongr (← mkCongrArg opP h₁) h₂
-
-/-- Chain three equalities `h₁ : a = b`, `h₂ : b = c`, `h₃ : c = d` into `a = d` -/
-def trans3 (h₁ h₂ h₃ : Expr) : MetaM Expr := do
-  mkEqTrans h₁ (← mkEqTrans h₂ h₃)
 
 /-- A proof of `lo < n` by `decide` -/
 def mkLtProof (lo n : Nat) : MetaM Expr := do
@@ -105,7 +95,7 @@ def mkNotLtProof (lo n : Nat) : MetaM Expr := do
   let inst ← synthInstance (mkApp (mkConst ``Decidable) p)
   return mkApp3 (mkConst ``of_decide_eq_false) p inst (← mkEqRefl (mkConst ``Bool.false))
 
-/-- Parse an array literal into an array of element exrpessions -/
+/-- Parse an array literal into an array of element expressions. -/
 def arrayLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
   let e ← zetaReduce (← whnf e)
   match_expr e with

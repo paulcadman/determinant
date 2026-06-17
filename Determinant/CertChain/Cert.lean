@@ -63,7 +63,7 @@ if `h : e = c.subject` and `c.proof : c.subject = c.norm`, return `e = c.norm`. 
 def chain (c : Cert sα) (h : Expr) : MetaM (Cert sα) := do
   return {c with proof := ← mkEqTrans h c.proof}
 
-/-- Cast an existing `proof : subject = 0` as a certificate for the cannonical zero -/
+/-- Cast an existing `proof : subject = 0` as a certificate for the canonical zero. -/
 def zeroCertOf (subject proof : Expr) : MetaM (Cert sα) := do
   let zero : Q($α) := q(0)
   let proof ← mkExpectedTypeHint proof (← mkEq subject zero)
@@ -91,21 +91,18 @@ structure Ctx {u : Level} {α : Q(Type u)} (sα : Q(CommSemiring $α)) where
   /-- Proof-producing ring arithmetic. -/
   rc : Common.RingCompute RatCoeff sα
   /--
-  The exact `CommRing` instance argument from the reified `birdDet` term.
-
-  Bird terms and lemmas are built with this instance so their subjects stay
-  definitionally equal to the original goal. The ring cache should also be
-  constructed with this same instance, so ring normalization and Bird term
-  construction do not accidentally use different instance expressions.
+  The exact `CommRing` instance from the reified `birdDet` term. Bird-side
+  terms and ring normalization use this same expression so generated proofs
+  remain definitionally aligned with the original goal.
   -/
   birdRingInst : Q(CommRing $α)
   dimension : Nat
-  dimensionExpr : Expr
-  array : Expr
-  arrayEntries : Array Expr
+  dimensionExpr : Q(Nat)
+  array : Q(Array $α)
+  arrayEntries : Array Q($α)
   /-- Canonical `@get R inst n A` — both the matrix reader and the initial
   entry function of the recurrence. -/
-  getP : Expr
+  getP : Q(Nat → Nat → $α)
 
 namespace Ctx
 
@@ -113,21 +110,137 @@ def applyEqLemma (name : Name) (u : Level) (args : Array Expr) : MetaM (EqProof 
   let proof := mkAppN (mkConst name [u]) args
   Meta.expectProof (α := α) ("Ctx.applyEqLemma: " ++ toString name) proof
 
-def iterP (ctx : Ctx sα) (t : Nat) : Expr :=
+def birdCommSemiring (ctx : Ctx sα) : Q(CommSemiring $α) :=
+  mkAppN (mkConst ``CommRing.toCommSemiring [u]) #[α, ctx.birdRingInst]
+
+def birdSemiring (ctx : Ctx sα) : Q(Semiring $α) :=
+  mkAppN (mkConst ``CommSemiring.toSemiring [u]) #[α, ctx.birdCommSemiring]
+
+def birdRing (ctx : Ctx sα) : Q(Ring $α) :=
+  mkAppN (mkConst ``CommRing.toRing [u]) #[α, ctx.birdRingInst]
+
+def birdDistrib (ctx : Ctx sα) : Q(Distrib $α) :=
+  mkAppN (mkConst ``instDistribOfSemiring [u]) #[α, ctx.birdSemiring]
+
+def birdMonoid (ctx : Ctx sα) : Q(Monoid $α) :=
+  mkAppN (mkConst ``Semiring.toMonoid [u]) #[α, ctx.birdSemiring]
+
+def birdAddGroupWithOne (ctx : Ctx sα) : Q(AddGroupWithOne $α) :=
+  mkAppN (mkConst ``Ring.toAddGroupWithOne [u]) #[α, ctx.birdRing]
+
+def birdAddMonoidWithOne (ctx : Ctx sα) : Q(AddMonoidWithOne $α) :=
+  mkAppN (mkConst ``AddGroupWithOne.toAddMonoidWithOne [u]) #[
+    α, ctx.birdAddGroupWithOne]
+
+def birdNonUnitalCommRing (ctx : Ctx sα) : Q(NonUnitalCommRing $α) :=
+  mkAppN (mkConst ``CommRing.toNonUnitalCommRing [u]) #[α, ctx.birdRingInst]
+
+def birdNonUnitalNonAssocCommRing (ctx : Ctx sα) :
+    Q(NonUnitalNonAssocCommRing $α) :=
+  mkAppN (mkConst ``NonUnitalCommRing.toNonUnitalNonAssocCommRing [u]) #[
+    α, ctx.birdNonUnitalCommRing]
+
+def birdNonUnitalNonAssocRing (ctx : Ctx sα) : Q(NonUnitalNonAssocRing $α) :=
+  mkAppN (mkConst ``NonUnitalNonAssocCommRing.toNonUnitalNonAssocRing [u]) #[
+    α, ctx.birdNonUnitalNonAssocCommRing]
+
+def addP (ctx : Ctx sα) : Q($α → $α → $α) :=
+  let addInst : Q(Add $α) :=
+    mkAppN (mkConst ``Distrib.toAdd [u]) #[α, ctx.birdDistrib]
+  let hAddInst : Q(HAdd $α $α $α) :=
+    mkAppN (mkConst ``instHAdd [u]) #[α, addInst]
+  mkAppN (mkConst ``HAdd.hAdd [u, u, u]) #[α, α, α, hAddInst]
+
+def mulP (ctx : Ctx sα) : Q($α → $α → $α) :=
+  let mulInst : Q(Mul $α) :=
+    mkAppN (mkConst ``Distrib.toMul [u]) #[α, ctx.birdDistrib]
+  let hMulInst : Q(HMul $α $α $α) :=
+    mkAppN (mkConst ``instHMul [u]) #[α, mulInst]
+  mkAppN (mkConst ``HMul.hMul [u, u, u]) #[α, α, α, hMulInst]
+
+def negP (ctx : Ctx sα) : Q($α → $α) :=
+  let mulZeroClass :=
+    mkAppN (mkConst ``instMulZeroClassOfSemiring [u]) #[α, ctx.birdSemiring]
+  let hasDistribNeg :=
+    mkAppN (mkConst ``NonUnitalNonAssocRing.toHasDistribNeg [u]) #[
+      α, ctx.birdNonUnitalNonAssocRing]
+  let negZeroClass :=
+    mkAppN (mkConst ``MulZeroClass.negZeroClass [u]) #[α, mulZeroClass, hasDistribNeg]
+  let negInst : Q(Neg $α) :=
+    mkAppN (mkConst ``NegZeroClass.toNeg [u]) #[α, negZeroClass]
+  mkAppN (mkConst ``Neg.neg [u]) #[α, negInst]
+
+def powP (ctx : Ctx sα) : Q($α → Nat → $α) :=
+  let powInst :=
+    mkAppN (mkConst ``Monoid.toPow [u]) #[α, ctx.birdMonoid]
+  let hPowInst : Q(HPow $α Nat $α) :=
+    mkAppN (mkConst ``instHPow [u, 0]) #[α, q(Nat), powInst]
+  mkAppN (mkConst ``HPow.hPow [u, 0, u]) #[α, q(Nat), α, hPowInst]
+
+def one (ctx : Ctx sα) : Q($α) :=
+  let oneInst :=
+    mkAppN (mkConst ``AddMonoidWithOne.toOne [u]) #[α, ctx.birdAddMonoidWithOne]
+  let ofNatOneInst :=
+    mkAppN (mkConst ``One.toOfNat1 [u]) #[α, oneInst]
+  mkAppN (mkConst ``OfNat.ofNat [u]) #[α, mkNatLit 1, ofNatOneInst]
+
+def add (ctx : Ctx sα) (x y : Q($α)) : Q($α) :=
+  let addP := ctx.addP
+  q($addP $x $y)
+
+def mul (ctx : Ctx sα) (x y : Q($α)) : Q($α) :=
+  let mulP := ctx.mulP
+  q($mulP $x $y)
+
+def neg (ctx : Ctx sα) (x : Q($α)) : Q($α) :=
+  let negP := ctx.negP
+  q($negP $x)
+
+def pow (ctx : Ctx sα) (x : Q($α)) (k : Nat) : Q($α) :=
+  let powP := ctx.powP
+  let k : Q(Nat) := mkNatLit k
+  q($powP $x $k)
+
+def iterP (ctx : Ctx sα) (t : Nat) : Q(Nat → Nat → $α) :=
   mkAppN
     (mkConst ``iter [u])
     #[α, ctx.birdRingInst, ctx.dimensionExpr, ctx.array, mkNatLit t, ctx.getP]
 
 /-- Returns `fun k => iter n A t F_0 k k -/
-def diagFun (ctx : Ctx sα) (t : Nat) : Expr :=
-  mkLambda `k .default (mkConst ``Nat) (mkApp2 (iterP ctx t) (.bvar 0) (.bvar 0))
+def diagFun (ctx : Ctx sα) (t : Nat) : Q(Nat → $α) :=
+  let iterP := ctx.iterP t
+  q(fun k => $iterP k k)
 
-def sumFromStopEq (ctx : Ctx sα) (lo : Nat) (f : Expr) : MetaM (EqProof α) := do
+def iterAt (ctx : Ctx sα) (t i j : Nat) : Q($α) :=
+  let i : Q(Nat) := mkNatLit i
+  let j : Q(Nat) := mkNatLit j
+  let iterP := ctx.iterP t
+  q($iterP $i $j)
+
+def sumFrom (ctx : Ctx sα) (lo : Nat) (f : Q(Nat → $α)) : Q($α) :=
+  mkAppN (mkConst ``sumFrom [u]) #[
+    α, ctx.birdRingInst, ctx.dimensionExpr, mkNatLit lo, f]
+
+def diagSum (ctx : Ctx sα) (t lo : Nat) : Q($α) :=
+  ctx.sumFrom lo (ctx.diagFun t)
+
+def tailFun (ctx : Ctx sα) (t i j : Nat) : Q(Nat → $α) :=
+  let i : Q(Nat) := mkNatLit i
+  let j : Q(Nat) := mkNatLit j
+  let iterP := ctx.iterP t
+  let getP := ctx.getP
+  let mulP := ctx.mulP
+  q(fun k => $mulP ($iterP $i k) ($getP k $j))
+
+def birdSign (ctx : Ctx sα) (k : Nat) : Q($α) :=
+  ctx.pow (ctx.neg ctx.one) k
+
+def sumFromStopEq (ctx : Ctx sα) (lo : Nat) (f : Q(Nat → $α)) : MetaM (EqProof α) := do
   let hNot ← Meta.mkNotLtProof lo ctx.dimension
   Ctx.applyEqLemma (α := α) ``sumFrom_stop u #[
     (α : Expr), ctx.birdRingInst, ctx.dimensionExpr, mkNatLit lo, f, hNot]
 
-def sumFromStepEq (ctx : Ctx sα) (lo : Nat) (f : Expr) : MetaM (EqProof α) := do
+def sumFromStepEq (ctx : Ctx sα) (lo : Nat) (f : Q(Nat → $α)) : MetaM (EqProof α) := do
   let hLt ← Meta.mkLtProof lo ctx.dimension
   Ctx.applyEqLemma (α := α) ``sumFrom_step u #[
     (α : Expr), ctx.birdRingInst, ctx.dimensionExpr, mkNatLit lo, f, hLt]
@@ -152,7 +265,7 @@ def birdDetEq (ctx : Ctx sα) (k : Nat) : MetaM (EqProof α) := do
   Ctx.applyEqLemma (α := α) ``birdDet_eq u #[
     α, ctx.birdRingInst, ctx.dimensionExpr, mkNatLit k, ctx.array, hn]
 
-/-- Constructs an equality between `get i j` and arrayEntries[i * dimenstion + j]
+/-- Constructs an equality between `get i j` and `arrayEntries[i * dimension + j]`.
 
 app: `get ctx.dimension ctx.array i j`
 result: `ctx.arrayEntries[i * ctx.dimension + j]`
@@ -189,20 +302,20 @@ def evalNeg (ctx : Ctx sα) (a : Cert sα) : AtomM (Cert sα) := do
   return toCert res
 
 /-- Combine two certificates through addition, then normalize the sum. -/
-def certAdd (ctx : Ctx sα) (addP : Expr) (a b : Cert sα) : AtomM (Cert sα) := do
-  let h ← Meta.mkCongrBinop addP a.proof b.proof
+def certAdd (ctx : Ctx sα) (a b : Cert sα) : AtomM (Cert sα) := do
+  let h ← Meta.mkCongrBinop ctx.addP a.proof b.proof
   let c ← ctx.evalAdd a b
   c.chain h
 
 /-- Combine two certificates through multiplication, then normalize the product. -/
-def certMul (ctx : Ctx sα) (mulP : Expr) (a b : Cert sα) : AtomM (Cert sα) := do
-  let h ← Meta.mkCongrBinop mulP a.proof b.proof
+def certMul (ctx : Ctx sα) (a b : Cert sα) : AtomM (Cert sα) := do
+  let h ← Meta.mkCongrBinop ctx.mulP a.proof b.proof
   let c ← ctx.evalMul a b
   c.chain h
 
 /-- Combine a certificate through negation, then normalize the result. -/
-def certNeg (ctx : Ctx sα) (negP : Expr) (a : Cert sα) : AtomM (Cert sα) := do
-  let h ← mkCongrArg negP a.proof
+def certNeg (ctx : Ctx sα) (a : Cert sα) : AtomM (Cert sα) := do
+  let h ← mkCongrArg ctx.negP a.proof
   let c ← ctx.evalNeg a
   c.chain h
 
@@ -210,11 +323,11 @@ end Ctx
 
 /-- A cache of proof certificates -/
 structure CertCache {u : Level} {α : Q(Type u)} (sα : Q(CommSemiring $α)) where
-  /-- Cache for `iterEntry` certificates, keyed by matrix indices -/
+  /-- Cache for entry certificates, keyed by matrix indices. -/
   entryCache : Std.HashMap (Nat × Nat) (Cert sα) := {}
-  /-- Cache for `iterEntry` certificates keyed by matrix indices and recusion index -/
+  /-- Cache for `iter` certificates, keyed by recursion index and matrix indices. -/
   iterCache : Std.HashMap (Nat × Nat × Nat) (Cert sα) := {}
-  /-- Cache for `diagEntry` certificates keyed by matrix indices -/
+  /-- Cache for diagonal-tail certificates, keyed by recursion index and lower bound. -/
   diagCache : Std.HashMap (Nat × Nat) (Cert sα) := {}
 
 /-- The Monad used for computing certificates -/
@@ -238,7 +351,7 @@ def certEntry (i j : Nat) : CertM sα (Cert sα) := do
   modify fun s => {s with entryCache := s.entryCache.insert (i, j) cert}
   return cert
 
-def certSumFromStop (lo : Nat) (f : Expr) : CertM sα (Cert sα) := do
+def certSumFromStop (lo : Nat) (f : Q(Nat → $α)) : CertM sα (Cert sα) := do
   let ctx ← read
   let eqStop ← ctx.sumFromStopEq lo f
   zeroCertOf eqStop.lhs eqStop.proof
@@ -246,14 +359,13 @@ def certSumFromStop (lo : Nat) (f : Expr) : CertM sα (Cert sα) := do
 /-- Certify one `sumFrom` step by certifying the head and recursive tail, then
 normalizing their sum. -/
 def certSumFromStep
-    (lo : Nat) (f : Expr)
+    (lo : Nat) (f : Q(Nat → $α))
     (head tail : CertM sα (Cert sα)) : CertM sα (Cert sα) := do
   let ctx ← read
   let stepEq ← ctx.sumFromStepEq lo f
-  let addApp ← Meta.expectAdd "certSumFromStep" stepEq.rhs
   let chead ← head
   let ctail ← tail
-  let csum ← ctx.certAdd addApp.partialApp chead ctail
+  let csum ← ctx.certAdd chead ctail
   csum.chain stepEq.proof
 
 mutual
@@ -288,21 +400,19 @@ partial def certIter (t i j : Nat) : CertM sα (Cert sα) := do
       ce.chain iterZeroPf.proof
     | t' + 1 => do
       let iterSuccPf ← ctx.iterSuccEq t' i j
-      let ⟨addP, dTerm, tSum⟩ ← Meta.expectAdd "certIter" iterSuccPf.rhs
-      let ⟨mulP, negS, _⟩ ← Meta.expectMul "certIter" dTerm
-      let ⟨negP, _⟩ ← Meta.expectNeg "certIter" negS
+      let negS := ctx.neg (ctx.diagSum t' (i + 1))
       -- A[i,j]
       let ce ← certEntry i j
       let cd ← 
         if ce.isZero then
-          zeroProdCert mulP negS ce
+          zeroProdCert ctx.mulP negS ce
         else do
           let cdiag ← certDiag t' (i + 1)
-          let cneg ← ctx.certNeg negP cdiag
-          ctx.certMul mulP cneg ce
-      let f ← Meta.expectSumFromFun "certIter" tSum
-      let ct ← certTail t' i j (i + 1) f mulP
-      let cs ← ctx.certAdd addP cd ct
+          let cneg ← ctx.certNeg cdiag
+          ctx.certMul cneg ce
+      let f := ctx.tailFun t' i j
+      let ct ← certTail t' i j (i + 1) f
+      let cs ← ctx.certAdd cd ct
       cs.chain iterSuccPf.proof
   modify fun s => {s with iterCache := s.iterCache.insert (t, i, j) cert}
   return cert
@@ -372,10 +482,10 @@ F_t[i,lo] * A[lo,j]
   = prodNorm          -- Ring.evalMul
 ```
 
-And we can check if A[lo,j] is zero and avoid certifyin `F_t[i,lo]`.
+And we can check if A[lo,j] is zero and avoid certifying `F_t[i,lo]`.
 
 -/
-partial def certTail (t i j lo : Nat) (f mulP : Expr) : CertM sα (Cert sα) := do
+partial def certTail (t i j lo : Nat) (f : Q(Nat → $α)) : CertM sα (Cert sα) := do
   let ctx ← read
   if lo < ctx.dimension
   then do
@@ -384,11 +494,11 @@ partial def certTail (t i j lo : Nat) (f mulP : Expr) : CertM sα (Cert sα) := 
       let ce_lo_j ← certEntry lo j
       -- If A[lo,j] = 0 then we can avoid computing the product.
       if ce_lo_j.isZero
-      then zeroProdCert mulP (mkApp2 (ctx.iterP t) (mkNatLit i) (mkNatLit lo)) ce_lo_j
+      then zeroProdCert ctx.mulP (ctx.iterAt t i lo) ce_lo_j
       else do
         let ci ← certIter t i lo
-        ctx.certMul mulP ci ce_lo_j
-    certSumFromStep lo f head (certTail t i j (lo + 1) f mulP)
+        ctx.certMul ci ce_lo_j
+    certSumFromStep lo f head (certTail t i j (lo + 1) f)
   else
     certSumFromStop lo f
 
@@ -406,12 +516,9 @@ def certBirdDet : CertM sα (Cert sα) := do
     -- so we set k := `ctx.dimension - 1`.
     let k := ctx.dimension - 1
     let birdDetEq ← ctx.birdDetEq k
-    let ⟨mulP, s, _⟩ ← Meta.expectMul "certBirdDet" birdDetEq.rhs
-    -- TODO: Try constructing s directly instead of parsing it out, especially
-    -- if mulP can be constructed on Ctx.
-    let cs ← ctx.eval s
+    let cs ← ctx.eval (ctx.birdSign k)
     let ci ← certIter k 0 0
-    let cm ← ctx.certMul mulP cs ci
+    let cm ← ctx.certMul cs ci
     cm.chain birdDetEq.proof
 
 end Cert

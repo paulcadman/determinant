@@ -31,7 +31,8 @@ elab_rules : tactic
       dsα := none
       czα := none
     }
-    let getP := mkAppN (mkConst ``BirdDet.get [u]) #[info.ringType, birdRingInst, info.dimensionExpr, info.arrayExpr]
+    let getP : Q(Nat → Nat → $α) :=
+      mkAppN (mkConst ``BirdDet.get [u]) #[info.ringType, birdRingInst, info.dimensionExpr, info.arrayExpr]
     let ctx : Ctx sα := {
       cα,
       rc := ringCompute cα,
