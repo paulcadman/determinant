@@ -9,22 +9,96 @@ open scoped BigOperators
 
 namespace Correctness
 
-/-- Bird off-diagonal update domain before removing duplicate column terms. -/
+/-!
+The paragraph after Bird equation (5) compares two sums.
+
+Left side from equation (3):
+
+```text
+α ∈ S_p(βᵢ), k ∈ βᵢ
+```
+
+Lean:
+
+```text
+OffdiagAllDomain i p
+  = pairs (α, k) where α ∈ TailWords i p and i < k.
+```
+
+Duplicate terms:
+
+If `k` already appears in `α`, then the column word `kα` has a duplicate `k`.
+Therefore `wordDet A (i :: α) (k :: α) = 0`.
+
+Lean:
+
+```text
+OffdiagDomain i p
+```
+
+is the subdomain of `OffdiagAllDomain` where `k ∉ wordSupport α`.
+
+Right side from equation (5):
+
+```text
+γ ∈ S_{p+1}(βᵢ), k ∈ γ
+```
+
+Lean:
+
+```text
+CofactorDomain i p
+  = pairs (γ, r) where γ ∈ TailWords i (p + 1)
+    and r : Fin (p + 1) is the position of k in γ.
+```
+
+The main map is:
+
+```text
+(γ, r) ↦ (eraseIdx γ r, γ.get r)
+```
+
+The inverse inserts `k` into `α` in the unique position that preserves strict
+order.
+-/
+
+/-- All terms from equation (3), before removing duplicates. -/
 def OffdiagAllDomain {n p : Nat} (i : Fin n) :
     Finset (Σ _ : Word n p, Fin n) :=
   (TailWords i p).sigma fun _α =>
     Finset.univ.filter fun k => i < k
 
-/-- Bird off-diagonal update domain without duplicate column terms. -/
+/-- Nonduplicate terms from equation (3). -/
 def OffdiagDomain {n p : Nat} (i : Fin n) :
     Finset (Σ _ : Word n p, Fin n) :=
   (TailWords i p).sigma fun α =>
     Finset.univ.filter fun k => i < k ∧ k ∉ wordSupport α
 
-/-- Laplace cofactor domain for words in `TailWords i (p+1)` and a removed position. -/
+/-- Terms from equation (5). -/
 def CofactorDomain {n p : Nat} (i : Fin n) :
     Finset (Σ _ : Word n (p + 1), Fin (p + 1)) :=
   (TailWords i (p + 1)).sigma fun _β => Finset.univ
+
+/-- One term from Bird equation (3)'s off-diagonal sum. -/
+def offdiagTerm
+    {R : Type*} [CommRing R]
+    {n p : Nat}
+    (A : Matrix (Fin n) (Fin n) R)
+    (i j : Fin n)
+    (x : Σ _ : Word n p, Fin n) : R :=
+  wordDet A (vcons i x.1) (vcons x.2 x.1) * A x.2 j
+
+/-- One cofactor term from Bird equation (5)'s summed Laplace expansion. -/
+def cofactorTerm
+    {R : Type*} [CommRing R]
+    {n p : Nat}
+    (A : Matrix (Fin n) (Fin n) R)
+    (i j : Fin n)
+    (y : Σ _ : Word n (p + 1), Fin (p + 1)) : R :=
+  wordDet A
+    (vcons i (eraseIdx y.1 y.2))
+    (vcons (y.1.get y.2) (eraseIdx y.1 y.2))
+    * A (y.1.get y.2) j
 
 theorem mem_OffdiagAllDomain {n p : Nat} {i : Fin n}
     {x : Σ _ : Word n p, Fin n} :
@@ -63,7 +137,7 @@ theorem eraseIdx_mem_TailWords {n p : Nat} {i : Fin n}
   · intro t
     simpa [eraseIdx_get] using hβ.2 (r.succAbove t)
 
-/-- Map a Laplace cofactor term to the corresponding non-duplicate Bird update term. -/
+/-- Erase the chosen cofactor index. -/
 def cofactorToOffdiag {n p : Nat}
     (x : Σ _ : Word n (p + 1), Fin (p + 1)) :
     Σ _ : Word n p, Fin n :=
@@ -82,7 +156,9 @@ theorem cofactorToOffdiag_mem
     · exact (mem_TailWords.mp hx).2 r
     · exact get_not_mem_eraseIdx β r (mem_TailWords.mp hx).1
 
-/-- Insert a missing value into an increasing tail word, then erase it again.
+-- Internal support for `offdiag_reindex_nonmem`.
+
+/-- Formal inverse of the erasing map.
 
 This is stated as existence rather than a concrete `sortedInsert` definition. The witness word is
 the increasing enumeration of `insert k (wordSupport α)`. -/
@@ -197,14 +273,9 @@ theorem offdiag_reindex_nonmem
     {n p : Nat}
     (A : Matrix (Fin n) (Fin n) R)
     (i j : Fin n) :
-    (∑ x ∈ OffdiagDomain (i := i) (p := p),
-        wordDet A (vcons i x.1) (vcons x.2 x.1) * A x.2 j)
+    (∑ x ∈ OffdiagDomain (i := i) (p := p), offdiagTerm A i j x)
       =
-    ∑ y ∈ CofactorDomain (i := i) (p := p),
-        wordDet A
-          (vcons i (eraseIdx y.1 y.2))
-          (vcons (y.1.get y.2) (eraseIdx y.1 y.2))
-          * A (y.1.get y.2) j := by
+    ∑ y ∈ CofactorDomain (i := i) (p := p), cofactorTerm A i j y := by
   rw [eq_comm]
   refine Finset.sum_bij
     (fun y _hy => cofactorToOffdiag y)
@@ -246,7 +317,8 @@ theorem offdiag_term_eq_zero_of_mem_support
     (i j : Fin n)
     (x : Σ _ : Word n p, Fin n)
     (hxmem : x.2 ∈ wordSupport x.1) :
-    wordDet A (vcons i x.1) (vcons x.2 x.1) * A x.2 j = 0 := by
+    offdiagTerm A i j x = 0 := by
+  unfold offdiagTerm
   rw [wordDet_vcons_duplicate_col_eq_zero A i x.2 x.1 hxmem]
   simp
 
@@ -255,11 +327,9 @@ theorem offdiag_all_eq_nonmem
     {n p : Nat}
     (A : Matrix (Fin n) (Fin n) R)
     (i j : Fin n) :
-    (∑ x ∈ OffdiagAllDomain (i := i) (p := p),
-        wordDet A (vcons i x.1) (vcons x.2 x.1) * A x.2 j)
+    (∑ x ∈ OffdiagAllDomain (i := i) (p := p), offdiagTerm A i j x)
       =
-    ∑ x ∈ OffdiagDomain (i := i) (p := p),
-        wordDet A (vcons i x.1) (vcons x.2 x.1) * A x.2 j := by
+    ∑ x ∈ OffdiagDomain (i := i) (p := p), offdiagTerm A i j x := by
   rw [OffdiagDomain_eq_filter_OffdiagAllDomain]
   rw [eq_comm]
   refine Finset.sum_filter_of_ne ?_
@@ -273,14 +343,9 @@ theorem offdiag_reindex
     {n p : Nat}
     (A : Matrix (Fin n) (Fin n) R)
     (i j : Fin n) :
-    (∑ x ∈ OffdiagAllDomain (i := i) (p := p),
-        wordDet A (vcons i x.1) (vcons x.2 x.1) * A x.2 j)
+    (∑ x ∈ OffdiagAllDomain (i := i) (p := p), offdiagTerm A i j x)
       =
-    ∑ y ∈ CofactorDomain (i := i) (p := p),
-        wordDet A
-          (vcons i (eraseIdx y.1 y.2))
-          (vcons (y.1.get y.2) (eraseIdx y.1 y.2))
-          * A (y.1.get y.2) j := by
+    ∑ y ∈ CofactorDomain (i := i) (p := p), cofactorTerm A i j y := by
   rw [offdiag_all_eq_nonmem A i j]
   exact offdiag_reindex_nonmem A i j
 
@@ -311,16 +376,11 @@ theorem offdiag_reindex_conditional
     (∑ k : Fin n,
         if i < k then
           ∑ α ∈ TailWords i p,
-            wordDet A (vcons i α) (vcons k α) * A k j
+            offdiagTerm A i j ⟨α, k⟩
         else 0)
       =
-    ∑ y ∈ CofactorDomain (i := i) (p := p),
-        wordDet A
-          (vcons i (eraseIdx y.1 y.2))
-          (vcons (y.1.get y.2) (eraseIdx y.1 y.2))
-          * A (y.1.get y.2) j := by
-  rw [← offdiag_all_sum_conditional i
-    (fun x => wordDet A (vcons i x.1) (vcons x.2 x.1) * A x.2 j)]
+    ∑ y ∈ CofactorDomain (i := i) (p := p), cofactorTerm A i j y := by
+  rw [← offdiag_all_sum_conditional i (fun x => offdiagTerm A i j x)]
   exact offdiag_reindex A i j
 
 end Correctness

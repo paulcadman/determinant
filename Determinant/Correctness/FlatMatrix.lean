@@ -6,48 +6,46 @@ public import Mathlib.LinearAlgebra.Matrix.Defs
 
 namespace BirdDet
 
-/-- Row-major index for an `n × n` flat matrix. -/
-def flatIdx (n i j : Nat) : Nat :=
-  i * n + j
+/-- Row-major index for an `n × m` flat matrix, using `m` as the row stride. -/
+def flatIdx (m i j : Nat) : Nat :=
+  i * m + j
 
 theorem flatIdx_lt_mul
-    {n i j : Nat} (hi : i < n) (hj : j < n) :
-    flatIdx n i j < n * n := by
-  unfold flatIdx
-  have h1 : i * n + j < i * n + n := Nat.add_lt_add_left hj _
-  have h2 : i * n + n = (i + 1) * n := by
-    rw [Nat.succ_mul]
-  have h3 : i + 1 ≤ n := Nat.succ_le_of_lt hi
-  have h4 : (i + 1) * n ≤ n * n := Nat.mul_le_mul_right n h3
-  exact lt_of_lt_of_le (by simpa [h2] using h1) h4
+  {n m i j : Nat} (hi : i < n) (hj : j < m) :
+    flatIdx m i j < n * m := by
+      unfold flatIdx
+      calc
+        i * m + j < i * m + m := Nat.add_lt_add_left hj (i * m)
+        _ = (i + 1) * m := Eq.symm (Nat.succ_mul i m)
+        _ ≤ n * m := Nat.mul_le_mul_right m hi
 
 /--
-Interpret a flat row-major array as a square matrix, checking that the array has
-exactly `n * n` entries.
+Interpret a flat row-major array as an `n × m` matrix, checking that the array
+has exactly `n * m` entries.
 
-The dimension `n` is implicit for direct use, but frontend code should usually
-pass `(n := ...)` explicitly because Lean cannot infer it from the size proof
-under `Matrix.det`.
+The dimensions `n` and `m` are implicit for direct use, but frontend code should
+usually pass `(n := rows)` and `(m := cols)` explicitly because Lean cannot infer
+them from the size proof alone.
 -/
 def ofFlatArray
     {R : Type*}
-    {n : Nat}
+    {n m : Nat}
     (A : Array R)
-    (hA : A.size = n * n) :
-    Matrix (Fin n) (Fin n) R :=
+    (hA : A.size = n * m) :
+    Matrix (Fin n) (Fin m) R :=
   fun i j =>
-    A[flatIdx n i.val j.val]'(by
+    A[flatIdx m i.val j.val]'(by
       rw [hA]
       exact flatIdx_lt_mul i.isLt j.isLt)
 
 theorem ofFlatArray_apply
     {R : Type*}
-    {n : Nat}
+    {n m : Nat}
     (A : Array R)
-    (hA : A.size = n * n)
-    (i j : Fin n) :
+    (hA : A.size = n * m)
+    (i : Fin n) (j : Fin m) :
     ofFlatArray A hA i j =
-      A[flatIdx n i.val j.val]'(by
+      A[flatIdx m i.val j.val]'(by
         rw [hA]
         exact flatIdx_lt_mul i.isLt j.isLt) := rfl
 

@@ -10,13 +10,19 @@ open scoped BigOperators
 
 namespace Correctness
 
+section WordBasics
+
 /-- A length-`m` word of row or column indices in `Fin n`.
 
 This is Mathlib's list-backed vector. It is definitionally a `{l // l.length = m}` subtype and
 has the finite instances needed for `Finset.univ`. -/
 abbrev Word (n m : Nat) := List.Vector (Fin n) m
 
-/-- The determinant of the submatrix selected by ordered row and column words. -/
+/--
+The determinant of the submatrix selected by ordered row and column words.
+
+This is Bird's `f[rows, cols]`.
+-/
 def wordDet {R : Type*} [CommRing R] {n m : Nat}
     (A : Matrix (Fin n) (Fin n) R)
     (rows cols : Word n m) : R :=
@@ -26,7 +32,7 @@ def wordDet {R : Type*} [CommRing R] {n m : Nat}
 def vnil {n : Nat} : Word n 0 :=
   List.Vector.nil
 
-/-- Prepend one index to a word. -/
+/-- Prepend one index to a word. This is Bird's word `iα`. -/
 def vcons {n p : Nat} (a : Fin n) (w : Word n p) : Word n (p + 1) :=
   List.Vector.ofFn (Fin.cases a fun q => w.get q)
 
@@ -38,7 +44,12 @@ def vsingle {n : Nat} (a : Fin n) : Word n 1 :=
 def vtail {n p : Nat} (w : Word n (p + 1)) : Word n p :=
   List.Vector.ofFn fun q => w.get q.succ
 
-/-- Remove the index at a given position of a nonempty word. -/
+/--
+Remove the index at a given position of a nonempty word.
+
+This is Bird's `β \ k`, where `k = β.get r`. Lean keeps the position `r`
+explicit because a word is indexed by positions, not just by values.
+-/
 def eraseIdx {n p : Nat} (w : Word n (p + 1)) (r : Fin (p + 1)) : Word n p :=
   List.Vector.ofFn fun q => w.get (r.succAbove q)
 
@@ -89,6 +100,10 @@ theorem fullWord_get {n : Nat} (q : Fin n) :
   rw [fullWord, List.Vector.get_ofFn]
   rfl
 
+end WordBasics
+
+section WordDetBasics
+
 theorem wordDet_singleton {R : Type*} [CommRing R] {n : Nat}
     (A : Matrix (Fin n) (Fin n) R) (i j : Fin n) :
     wordDet A (vsingle i) (vsingle j) = A i j := by
@@ -116,6 +131,10 @@ theorem wordDet_full_eq_det {R : Type*} [CommRing R] {n : Nat}
     (A : Matrix (Fin n) (Fin n) R) :
     wordDet A (fullWord n) (fullWord n) = A.det := by
   simp [wordDet, fullWord]
+
+end WordDetBasics
+
+section LaplaceExpansion
 
 /-- First-column Laplace expansion for a word determinant, keeping Mathlib's explicit signs.
 
@@ -186,6 +205,7 @@ theorem wordDet_cycleRange_columns
     _ = (-1 : R) ^ (k : Nat) * wordDet A rows (vcons (α.get k) (eraseIdx α k)) := by
       simp [Fin.sign_cycleRange, B, wordDet]
 
+-- Internal sign arithmetic for `wordDet_cons_cons_expand`.
 lemma neg_one_pow_mul_self {R : Type*} [CommRing R] (k : Nat) :
     (-1 : R)^k * (-1 : R)^k = 1 := by
   rw [← pow_add, ← two_mul k, pow_mul]
@@ -203,8 +223,7 @@ theorem wordDet_cons_cons_expand
     {n p : Nat}
     (A : Matrix (Fin n) (Fin n) R)
     (i j : Fin n)
-    (α : Word n (p + 1))
-    (_hα : StrictMono (fun t : Fin (p + 1) => α.get t)) :
+    (α : Word n (p + 1)) :
     wordDet A (vcons i α) (vcons j α)
       = A i j * wordDet A α α
         - ∑ kpos : Fin (p + 1),
@@ -232,5 +251,7 @@ theorem wordDet_cons_cons_expand
     _ = -(A (α.get k) j *
               wordDet A (vcons i (eraseIdx α k)) (vcons (α.get k) (eraseIdx α k))) := by
           simp
+
+end LaplaceExpansion
 
 end Correctness

@@ -8,8 +8,21 @@ open scoped BigOperators
 
 namespace Correctness
 
+/-!
+This file proves Bird's main invariant for the proof-friendly scalar recurrence.
+The structure mirrors the paper:
 
-/-- Bird's diagonal equation, assuming the diagonal case of the induction hypothesis. -/
+* `diagonal_formula` is Bird equation (2).
+* `offdiag_update_formula` is the off-diagonal part of Bird equation (3) after
+  applying the induction hypothesis.
+* `sum_wordDet_cons_cons_expand` is the summed first-column Laplace expansion,
+  Bird equation (5).
+* `offdiag_reindex_conditional` compares the off-diagonal sums in equations (3)
+  and (5).
+* `iterEntry_formula` is Bird equation (1).
+-/
+
+/-- Bird equation (2), assuming the diagonal case of the induction hypothesis. -/
 theorem diagonal_formula
     {R : Type*} [CommRing R]
     {n : Nat}
@@ -53,6 +66,24 @@ theorem iterEntry_formula_zero
   change A i j = wordDet A (vsingle i) (vsingle j)
   rw [wordDet_singleton]
 
+/--
+Summed first-column Laplace expansion, Bird equation (5).
+
+It sums the first-column expansion of:
+
+```text
+f[iγ, jγ]
+```
+
+over all:
+
+```text
+γ ∈ S_{p+1}(βᵢ)
+```
+
+In Lean, `γ` is a word in `TailWords i (p + 1)`. Choosing
+`r : Fin (p + 1)` gives `k = γ.get r`, and `eraseIdx γ r` is Bird's `γ \ k`.
+-/
 theorem sum_wordDet_cons_cons_expand
     {R : Type*} [CommRing R]
     {n p : Nat}
@@ -80,7 +111,7 @@ theorem sum_wordDet_cons_cons_expand
                     (vcons (β.get r) (eraseIdx β r))) := by
           apply Finset.sum_congr rfl
           intro β hβ
-          exact wordDet_cons_cons_expand A i j β (mem_TailWords.mp hβ).1
+          exact wordDet_cons_cons_expand A i j β
     _ = A i j * (∑ β ∈ TailWords i (p + 1), wordDet A β β)
           -
         ∑ y ∈ CofactorDomain (i := i) (p := p),
@@ -92,6 +123,10 @@ theorem sum_wordDet_cons_cons_expand
           rw [← Finset.mul_sum]
           simp [CofactorDomain, Finset.sum_sigma]
 
+/--
+The same identity as `sum_wordDet_cons_cons_expand`, with the product order in
+the cofactor sum changed so it matches `offdiagTerm`.
+-/
 theorem sum_wordDet_cons_cons_expand_wordDet_mul
     {R : Type*} [CommRing R]
     {n p : Nat}
@@ -125,6 +160,30 @@ lemma neg_one_pow_succ_mul_neg_one
   rw [pow_succ]
   simp [mul_comm]
 
+/--
+Bird equation (3), off-diagonal part after applying the induction hypothesis.
+
+Paper form:
+
+```text
+∑_{k ∈ βᵢ} x^(p)_{ik} a_{kj}
+```
+
+After induction:
+
+```text
+(-1)^p ∑_{k ∈ βᵢ} ∑_{α ∈ S_p(βᵢ)}
+  f[iα, kα] a_{kj}
+```
+
+After sign rewrite and reindexing:
+
+```text
+-(-1)^(p+1) ∑_{cofactor domain} cofactorTerm
+```
+
+The Lean theorem below is `offdiag_update_formula`.
+-/
 theorem offdiag_update_formula
     {R : Type*} [CommRing R]
     {n p : Nat}
@@ -168,24 +227,33 @@ theorem offdiag_update_formula
           (∑ k : Fin n,
             if i < k then
               ∑ α ∈ TailWords i p,
-                wordDet A (vcons i α) (vcons k α) * A k j
+                offdiagTerm A i j ⟨α, k⟩
             else 0) := by
           rw [Finset.mul_sum]
+          simp [offdiagTerm]
     _ = (-1 : R)^p *
-        (∑ y ∈ CofactorDomain (i := i) (p := p),
-          wordDet A
-            (vcons i (eraseIdx y.1 y.2))
-            (vcons (y.1.get y.2) (eraseIdx y.1 y.2)) *
-          A (y.1.get y.2) j) := by
+        (∑ y ∈ CofactorDomain (i := i) (p := p), cofactorTerm A i j y) := by
           rw [offdiag_reindex_conditional A i j]
     _ = -((-1 : R)^(p + 1)) *
-        (∑ y ∈ CofactorDomain (i := i) (p := p),
-          wordDet A
-            (vcons i (eraseIdx y.1 y.2))
-            (vcons (y.1.get y.2) (eraseIdx y.1 y.2)) *
-          A (y.1.get y.2) j) := by
+        (∑ y ∈ CofactorDomain (i := i) (p := p), cofactorTerm A i j y) := by
           rw [neg_one_pow_eq_neg_succ]
 
+/--
+The induction step follows Bird's paper as follows.
+
+1. Unfold one Bird step. This gives the diagonal part plus the off-diagonal
+   part.
+2. `diagonal_formula` rewrites the diagonal part to the first sum in equation
+   (3).
+3. `offdiag_update_formula` rewrites the off-diagonal part to the second sum in
+   equation (3), and uses `offdiag_reindex_conditional` to put it in the same
+   cofactor domain as equation (5).
+4. `sum_wordDet_cons_cons_expand_wordDet_mul` says that the diagonal sum minus
+   the cofactor sum is exactly the summed first-column expansion of the target
+   determinant sum.
+5. The final `ring` step only handles signs and distributivity of the scalar
+   factor `(-1)^(p+1)`.
+-/
 theorem iterEntry_formula_succ
     {R : Type*} [CommRing R]
     {n p : Nat}
@@ -209,6 +277,7 @@ theorem iterEntry_formula_succ
   rw [sum_wordDet_cons_cons_expand_wordDet_mul A i j]
   ring
 
+/-- Bird equation (1), the main scalar-entry invariant. -/
 theorem iterEntry_formula
     {R : Type*} [CommRing R]
     {n : Nat}
@@ -224,21 +293,5 @@ theorem iterEntry_formula
       exact iterEntry_formula_zero A i j
   | succ p ih =>
       exact iterEntry_formula_succ A ih i j
-
-example {R : Type*} [CommRing R]
-    (A : Matrix (Fin 2) (Fin 2) R) (i j : Fin 2) :
-    Correctness.iterEntry A 0 (fun i j => A i j) i j =
-      (-1 : R)^0 *
-        (∑ α ∈ TailWords i 0,
-          wordDet A (vcons i α) (vcons j α)) := by
-  simpa using iterEntry_formula A 0 i j
-
-example {R : Type*} [CommRing R]
-    (A : Matrix (Fin 2) (Fin 2) R) (i j : Fin 2) :
-    Correctness.iterEntry A 1 (fun i j => A i j) i j =
-      (-1 : R)^1 *
-        (∑ α ∈ TailWords i 1,
-          wordDet A (vcons i α) (vcons j α)) := by
-  simpa using iterEntry_formula A 1 i j
 
 end Correctness
