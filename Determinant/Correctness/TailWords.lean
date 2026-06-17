@@ -9,9 +9,22 @@ open scoped BigOperators
 
 namespace Correctness
 
-/-- Increasing words whose entries all lie strictly after `i`.
+/--
+Increasing words whose entries all lie strictly after `i`.
 
-This is Bird's `S_p([i+1..n])`. -/
+Bird writes `βᵢ = [i+1 .. n]`. Lean does not define a separate object `βᵢ`;
+instead `TailWords i p` directly represents `S_p(βᵢ)`.
+
+Beware: variables named `β` in the Lean code are usually actual words in
+`TailWords i (p + 1)`, not Bird's alphabet `βᵢ`.
+
+Concrete 0-based examples in dimension `5`:
+
+* `TailWords 0 2` corresponds to
+  `{[1,2], [1,3], [1,4], [2,3], [2,4], [3,4]}`.
+* `TailWords 2 1` corresponds to `{[3], [4]}`.
+* `TailWords 0 4` is the singleton `{[1,2,3,4]}`.
+-/
 def TailWords {n : Nat} (i : Fin n) (p : Nat) :
     Finset (Word n p) :=
   Finset.univ.filter fun α =>

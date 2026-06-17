@@ -10,7 +10,12 @@ namespace Correctness
 
 variable {R : Type*} [CommRing R]
 
-/-- One scalar-entry step of Bird's determinant recurrence. -/
+/--
+One scalar-entry step of Bird's determinant recurrence.
+
+This is the `(i, j)` entry of `mu(F) * A` from the paper. The proof works with
+this scalar form instead of constructing the whole matrix `mu(F)`.
+-/
 def stepEntry {n : Nat}
     (A : Matrix (Fin n) (Fin n) R)
     (F : Fin n → Fin n → R)
@@ -19,7 +24,17 @@ def stepEntry {n : Nat}
   diag * A i j
     + ∑ k : Fin n, if i < k then F i k * A k j else 0
 
-/-- Scalar-entry iteration of Bird's determinant recurrence. -/
+/--
+Scalar-entry iteration of Bird's determinant recurrence.
+
+The expression
+
+```lean
+iterEntry A p (fun i j => A i j) i j
+```
+
+is Bird's `x^(p)_ij`, the `(i, j)` entry of `F_A^p(A)`.
+-/
 def iterEntry {n : Nat}
     (A : Matrix (Fin n) (Fin n) R) :
     Nat → (Fin n → Fin n → R) → Fin n → Fin n → R
