@@ -176,10 +176,9 @@ meta def ctxℤ
     czα := none
   }
   let dimensionExpr : Q(Nat) := mkNatLit dimension
-  let getP : Q(Nat → Nat → ℤ) :=
-    mkAppN (mkConst ``BirdDet.get [0]) #[q(ℤ), birdRingInst, dimensionExpr, array]
+  let ops := CtxOps.ofCommRing birdRingInst dimensionExpr array
   let rc := ringCompute cα
-  return {cα, rc, birdRingInst, dimension, dimensionExpr, array, arrayEntries, getP}
+  return {cα, rc, birdRingInst, dimension, dimensionExpr, array, arrayEntries, ops}
 
 meta def withCtxℤ
   {α : Type}

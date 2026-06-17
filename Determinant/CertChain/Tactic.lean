@@ -20,10 +20,9 @@ elab_rules : tactic
     let some (_, lhs, rhs) := target.eq?
       | throwError "cert_bird_det: Expected an equality goal"
     let info ← Meta.reifyBirdDet lhs
-    let u := info.level
     let α := info.ringType
     let birdRingInst := info.birdRingInst
-    let sαExpr := mkAppN (mkConst ``CommRing.toCommSemiring [u]) #[α, birdRingInst]
+    let sαExpr := CtxOps.birdCommSemiring birdRingInst
     let some sα ← checkTypeQ sαExpr q(CommSemiring $α)
       | throwError "cert_bird_det: failed to derive `CommSemiring` from Bird ring instance"
     let cα : Common.Cache sα := {
@@ -31,8 +30,7 @@ elab_rules : tactic
       dsα := none
       czα := none
     }
-    let getP : Q(Nat → Nat → $α) :=
-      mkAppN (mkConst ``BirdDet.get [u]) #[info.ringType, birdRingInst, info.dimensionExpr, info.arrayExpr]
+    let ops := CtxOps.ofCommRing birdRingInst info.dimensionExpr info.arrayExpr
     let ctx : Ctx sα := {
       cα,
       rc := ringCompute cα,
@@ -41,7 +39,7 @@ elab_rules : tactic
       dimensionExpr := info.dimensionExpr
       array := info.arrayExpr
       arrayEntries := info.arrayEntries
-      getP,
+      ops
     }
     let detNorm ← certBirdDet.run' {} |>.run ctx |>.run .reducible
     let some rhs ← checkTypeQ rhs α
