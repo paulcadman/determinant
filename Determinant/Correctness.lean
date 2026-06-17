@@ -1,3 +1,3 @@
 module
 
-public import Determinant.Correctness.Theorem
+public import Determinant.Correctness.Bird
