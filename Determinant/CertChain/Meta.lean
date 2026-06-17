@@ -107,6 +107,14 @@ def arrayLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
       return some elems
   | _ => return none
 
+/-- Recognize both raw kernel Nat literals and ordinary elaborated Nat numerals. -/
+def natLiteral? (e : Expr) : Option Nat :=
+  e.rawNatLit? <|>
+    match_expr e with
+    | OfNat.ofNat ty n _ =>
+        if ty.isConstOf ``Nat then n.rawNatLit? else none
+    | _ => none
+
 /-- Information parsed by `reifyBirdDet` -/
 structure BirdDetInfo where
   level : Level
@@ -127,7 +135,7 @@ def reifyBirdDet (e : Expr) : MetaM BirdDetInfo := do
   let dimensionExpr ← whnf dimensionExpr
   let some dimensionExpr ← checkTypeQ dimensionExpr q(Nat)
     | throwError "expected the dimension to have type `Nat`, got {dimensionExpr}"
-  let some dimension := dimensionExpr.rawNatLit?
+  let some dimension := natLiteral? dimensionExpr
     | throwError "expected the dimension to be a `Nat` literal, got {dimensionExpr}"
   let some arrayExpr ← checkTypeQ arrayExpr q(Array $α)
     | throwError "expected the array to have type{indentExpr q(Array $α)}"
