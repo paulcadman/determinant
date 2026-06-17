@@ -4,3 +4,4 @@ module
 
 import Determinant.Cbv
 import Determinant.CertChain
+import Determinant.Correctness
