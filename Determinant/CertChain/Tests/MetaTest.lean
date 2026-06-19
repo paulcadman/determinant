@@ -18,11 +18,11 @@ open Meta
 
 @[irreducible] def wrappedIntCommRing : CommRing ℤ := inferInstance
 
-def assertDefEq (actual expected : Expr) : MetaM Unit := do
+meta def assertDefEq (actual expected : Expr) : MetaM Unit := do
   unless (← isDefEq actual expected) do
     throwError m!"expected{indentExpr expected}\ngot{indentExpr actual}"
 
-def assertLevelDefEq (actual expected : Level) : MetaM Unit := do
+meta def assertLevelDefEq (actual expected : Level) : MetaM Unit := do
   unless (← isLevelDefEq actual expected) do
     throwError m!"expected level {expected}, got {actual}"
 
@@ -189,7 +189,7 @@ meta def withCtxℤ
     let ctx ← ctxℤ n A
     action.run' {} |>.run ctx |>.run .reducible
 
-def assertCertNorm (c : Cert q(Int.instCommSemiring)) (expected : Expr) : MetaM Unit := do
+meta def assertCertNorm (c : Cert q(Int.instCommSemiring)) (expected : Expr) : MetaM Unit := do
   Meta.check c.proof
   assertDefEq c.norm expected
 

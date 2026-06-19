@@ -37,7 +37,7 @@ def normalizeBirdDet (e : Expr) : MetaM Simp.Result := do
     ops
   }
   let detNorm ← certBirdDet.run' {} |>.run ctx |>.run .reducible
-  Mathlib.Tactic.RingNF.cleanup {} {expr := detNorm.norm, proof? := some detNorm.proof}
+  Mathlib.Tactic.RingNF.cleanup {} {expr := detNorm.eq.rhs, proof? := some detNorm.eq.proof}
 
 /--
 Normalize a literal `birdDet` call using the certificate-chain evaluator.

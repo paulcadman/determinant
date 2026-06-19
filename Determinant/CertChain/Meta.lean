@@ -65,9 +65,25 @@ def expectNeg (context : String) (e : Expr) : MetaM UnaryOpApp := do
       return ⟨mkApp2 e.getAppFn α inst, x⟩
   | _ => throwError "{context}: expected neg, got {e}"
 
-/-- Given h₁ : x = x' and h₂ : y = y', construct `opP x y = opP x' y'` -/
-def mkCongrBinop (opP h₁ h₂ : Expr) : MetaM Expr := do
-  mkCongr (← mkCongrArg opP h₁) h₂
+/-- Given `h₁ : x = x'` and `h₂ : y = y'`, construct `opP x y = opP x' y'`. -/
+def mkCongrBinop {u : Level} {α : Q(Type u)}
+    (opP : Q($α → $α → $α)) (h₁ h₂ : EqProof α) :
+    MetaM (EqProof α) := do
+  let lhs : Q($α) := q($opP $h₁.lhs $h₂.lhs)
+  let rhs : Q($α) := q($opP $h₁.rhs $h₂.rhs)
+  let proof ← mkCongr (← mkCongrArg opP h₁.proof) h₂.proof
+  let proof ← mkExpectedTypeHint proof q($lhs = $rhs)
+  return {lhs, rhs, proof}
+
+/-- Given `h : x = x'`, construct `opP x = opP x'`. -/
+def mkCongrUnop {u : Level} {α : Q(Type u)}
+    (opP : Q($α → $α)) (h : EqProof α) :
+    MetaM (EqProof α) := do
+  let lhs : Q($α) := q($opP $h.lhs)
+  let rhs : Q($α) := q($opP $h.rhs)
+  let proof ← mkCongrArg opP h.proof
+  let proof ← mkExpectedTypeHint proof q($lhs = $rhs)
+  return {lhs, rhs, proof}
 
 /-- A proof of `lo < n` by `decide` -/
 def mkLtProof (lo n : Nat) : MetaM Expr := do
