@@ -26,7 +26,7 @@ j) entry of `F_{t+q} = μ(F) * A` without computing the whole matrix `μ(F_t)` o
 product.
 
 ```latex
-F_{t+1}[i,j] = ((-∑_{k=i+1}^{n-1} F[k,k]) * A[i,j]) + ∑_{k=i+1}^{n-1} F[i,k] * A[k,j]
+F_{t+1}[i,j] = ((-∑_{k=i+1}^{n-1} F_t[k,k]) * A[i,j]) + ∑_{k=i+1}^{n-1} F_t[i,k] * A[k,j]
 ```
 -/
 def iter (n : Nat) (A : Array R) (t : Nat) (F : Nat → Nat → R) : Nat → Nat → R :=

@@ -28,8 +28,8 @@ structure UnaryOpApp where
 
 /-- A convenience type representing an equality proof `proof : lhs = rhs`. -/
 structure EqProof {u : Level} (α : Q(Type u)) where
-  lhs : Q($α)
-  rhs : Q($α)
+  {lhs : Q($α)}
+  {rhs : Q($α)}
   proof : Q($lhs = $rhs)
 
 /-- Parse an `EqProof` or throw -/

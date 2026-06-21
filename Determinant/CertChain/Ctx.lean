@@ -237,10 +237,13 @@ def birdDetZeroEq (ctx : Ctx sα) : MetaM (EqProof α) :=
     (α : Expr), ctx.birdRingInst, ctx.array]
 
 def birdDetEq (ctx : Ctx sα) (k : Nat) : MetaM (EqProof α) := do
-  let kSucc ← mkAppM ``HAdd.hAdd #[mkNatLit k, mkNatLit 1]
-  let hn ← mkExpectedTypeHint (← mkEqRefl ctx.dimensionExpr) (← mkEq ctx.dimensionExpr kSucc)
-  Ctx.applyEqLemma (α := α) ``birdDet_eq u #[
-    α, ctx.birdRingInst, ctx.dimensionExpr, mkNatLit k, ctx.array, hn]
+  let kSucc  : Q(ℕ) := q($k + 1)
+  have dim : Q(ℕ) := ctx.dimensionExpr
+  have : $dim =Q $kSucc := ⟨⟩
+  let hn : Q($dim = $kSucc) := q(rfl)
+  let proof := q(@birdDet_eq $α $ctx.birdRingInst $dim $k $ctx.array $hn)
+  return .mk proof
+
 
 /-- Constructs an equality between `get i j` and `arrayEntries[i * dimension + j]`.
 
