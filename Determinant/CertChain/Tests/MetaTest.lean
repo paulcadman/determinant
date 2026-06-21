@@ -18,11 +18,11 @@ open Meta
 
 @[irreducible] def wrappedIntCommRing : CommRing ℤ := inferInstance
 
-def assertDefEq (actual expected : Expr) : MetaM Unit := do
+meta def assertDefEq (actual expected : Expr) : MetaM Unit := do
   unless (← isDefEq actual expected) do
     throwError m!"expected{indentExpr expected}\ngot{indentExpr actual}"
 
-def assertLevelDefEq (actual expected : Level) : MetaM Unit := do
+meta def assertLevelDefEq (actual expected : Level) : MetaM Unit := do
   unless (← isLevelDefEq actual expected) do
     throwError m!"expected level {expected}, got {actual}"
 
@@ -163,15 +163,22 @@ meta def ctxℤ
   (dimension : Nat)
   (array : Q(Array ℤ))
   : MetaM (Ctx q(Int.instCommSemiring)) := do
-  let some arrayEntries ← arrayLiteral? array
+  let some rawEntries ← arrayLiteral? array
     | throwError "Ctxℤ: A is not an array literal"
-  let cα ← Common.mkCache q(Int.instCommSemiring)
-  let some rα := cα.rα | unreachable!
-  let dimensionExpr := mkNatLit dimension
-  let getP := mkAppN (mkConst ``BirdDet.get [0]) #[q(ℤ), rα, dimensionExpr, array]
+  let arrayEntries ← rawEntries.mapM fun entry => do
+    let some entry ← checkTypeQ entry q(ℤ)
+      | throwError "Ctxℤ: array entry does not have type ℤ"
+    return entry
+  let birdRingInst : Q(CommRing ℤ) := q(Int.instCommRing)
+  let cα : Common.Cache q(Int.instCommSemiring) := {
+    rα := some birdRingInst
+    dsα := none
+    czα := none
+  }
+  let dimensionExpr : Q(Nat) := mkNatLit dimension
+  let ops := CtxOps.ofCommRing birdRingInst dimensionExpr array
   let rc := ringCompute cα
-  let birdRingInst := rα
-  return {rα, cα, rc, birdRingInst, dimension, dimensionExpr, array, arrayEntries, getP}
+  return {cα, rc, birdRingInst, dimension, dimensionExpr, array, arrayEntries, ops}
 
 meta def withCtxℤ
   {α : Type}
@@ -182,7 +189,7 @@ meta def withCtxℤ
     let ctx ← ctxℤ n A
     action.run' {} |>.run ctx |>.run .reducible
 
-def assertCertNorm (c : Cert q(Int.instCommSemiring)) (expected : Expr) : MetaM Unit := do
+meta def assertCertNorm (c : Cert q(Int.instCommSemiring)) (expected : Expr) : MetaM Unit := do
   Meta.check c.proof
   assertDefEq c.norm expected
 

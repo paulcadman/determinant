@@ -26,7 +26,7 @@ j) entry of `F_{t+q} = μ(F) * A` without computing the whole matrix `μ(F_t)` o
 product.
 
 ```latex
-F_{t+1}[i,j] = ((-∑_{k=i+1}^{n-1} F[k,k]) * A[i,j]) + ∑_{k=i+1}^{n-1} F[i,k] * A[k,j]
+F_{t+1}[i,j] = ((-∑_{k=i+1}^{n-1} F_t[k,k]) * A[i,j]) + ∑_{k=i+1}^{n-1} F_t[i,k] * A[k,j]
 ```
 -/
 def iter (n : Nat) (A : Array R) (t : Nat) (F : Nat → Nat → R) : Nat → Nat → R :=
@@ -36,7 +36,7 @@ def iter (n : Nat) (A : Array R) (t : Nat) (F : Nat → Nat → R) : Nat → Nat
     -(sumFrom n (i + 1) fun k => iter n A t F k k) * get n A i j
     + sumFrom n (i + 1) fun k => iter n A t F i k * get n A k j
 
-/-- Scalar-entry Bird deterinant
+/-- Scalar-entry Bird determinant.
 
 This computes Bird determinant by recurrence on matrix entries required by the
 determinant instead of constructing each intermediate matrix. -/
