@@ -21,11 +21,27 @@ example : birdDet 1 #[5] = (5 : ℤ) := by
 example : birdDet 2 #[1, 2, 3, 4] = (-2 : ℤ) := by
   eval_bird_det
 
+example :
+    Matrix.det (BirdDet.ofFlatArray (n := 2) (m := 2) #[(1 : ℤ), 2, 3, 4] rfl) =
+      (-2 : ℤ) := by
+  eval_det
+
+example :
+    (BirdDet.ofFlatArray (n := 2) (m := 2) #[(1 : ℤ), 2, 3, 4] rfl).det =
+      (-2 : ℤ) := by
+  eval_det
+
 example : birdDet 2 #[1, 2, 2, 4] = (0 : ℤ) := by
   simp only [↓cert_bird_det]
 
 example (a b c d : R) : birdDet 2 #[a, b, c, d] = a * d - b * c := by
   simp only [↓cert_bird_det]
+  ring
+
+example (a b c d : R) :
+    Matrix.det (BirdDet.ofFlatArray (n := 2) (m := 2) #[a, b, c, d] rfl) =
+      a * d - b * c := by
+  eval_det
   ring
 
 example : (birdDet 2 #[1, 2, 3, 4] : ℤ) + 3 = 1 := by
@@ -43,6 +59,18 @@ lemma test_case_8 :
        0,  0,  0,  0,  0, -1,  2, -1,
        0,  0,  0,  0,  0,  0, -1,  2] = 1 := by
   simp only [↓cert_bird_det]
+
+lemma test_case_8_det :
+  Matrix.det (BirdDet.ofFlatArray (n := 8) (m := 8)
+    #[ 2,  0, -1,  0,  0,  0,  0,  0,
+       0,  2,  0, -1,  0,  0,  0,  0,
+      -1,  0,  2, -1,  0,  0,  0,  0,
+       0, -1, -1,  2, -1,  0,  0,  0,
+       0,  0,  0, -1,  2, -1,  0,  0,
+       0,  0,  0,  0, -1,  2, -1,  0,
+       0,  0,  0,  0,  0, -1,  2, -1,
+       0,  0,  0,  0,  0,  0, -1,  2] rfl) = 1 := by
+  simp only [↓cert_matrix_det]
 
 open MvPolynomial in
 lemma test_case_11 :
