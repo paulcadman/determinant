@@ -1,9 +1,8 @@
 module
 
 public import Determinant.CertChain.Bird
-public import Determinant.CertChain.Meta
-public import Mathlib.Tactic.Ring
-public import Qq
+public meta import Determinant.CertChain.Meta
+public meta import Mathlib.Tactic.Ring
 public meta import Lean.Meta.AppBuilder
 public meta import Lean.Meta.LitValues
 
@@ -16,250 +15,94 @@ public meta section
 variable
   {u : Level}
   {α : Q(Type u)}
-  {sα : Q(CommSemiring $α)}
+  {rα : Q(CommRing $α)}
 
-structure CtxOps {u : Level} (α : Q(Type u)) where
-  getP : Q(Nat → Nat → $α)
-  addP : Q($α → $α → $α)
-  mulP : Q($α → $α → $α)
-  negP : Q($α → $α)
-  powP : Q($α → Nat → $α)
-  one : Q($α)
-
-namespace CtxOps
-
-def birdCommSemiring {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q(CommSemiring $α) :=
-  mkAppN (mkConst ``CommRing.toCommSemiring [u]) #[α, birdRingInst]
-
-def birdSemiring {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q(Semiring $α) :=
-  mkAppN (mkConst ``CommSemiring.toSemiring [u]) #[
-    α, birdCommSemiring birdRingInst]
-
-def birdRing {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q(Ring $α) :=
-  mkAppN (mkConst ``CommRing.toRing [u]) #[α, birdRingInst]
-
-def birdDistrib {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q(Distrib $α) :=
-  mkAppN (mkConst ``instDistribOfSemiring [u]) #[α, birdSemiring birdRingInst]
-
-def birdMonoid {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q(Monoid $α) :=
-  mkAppN (mkConst ``Semiring.toMonoid [u]) #[α, birdSemiring birdRingInst]
-
-def birdAddGroupWithOne {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q(AddGroupWithOne $α) :=
-  mkAppN (mkConst ``Ring.toAddGroupWithOne [u]) #[α, birdRing birdRingInst]
-
-def birdAddMonoidWithOne {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q(AddMonoidWithOne $α) :=
-  mkAppN (mkConst ``AddGroupWithOne.toAddMonoidWithOne [u]) #[
-    α, birdAddGroupWithOne birdRingInst]
-
-def birdNonUnitalCommRing {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q(NonUnitalCommRing $α) :=
-  mkAppN (mkConst ``CommRing.toNonUnitalCommRing [u]) #[α, birdRingInst]
-
-def birdNonUnitalNonAssocCommRing {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q(NonUnitalNonAssocCommRing $α) :=
-  mkAppN (mkConst ``NonUnitalCommRing.toNonUnitalNonAssocCommRing [u]) #[
-    α, birdNonUnitalCommRing birdRingInst]
-
-def birdNonUnitalNonAssocRing {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q(NonUnitalNonAssocRing $α) :=
-  mkAppN (mkConst ``NonUnitalNonAssocCommRing.toNonUnitalNonAssocRing [u]) #[
-    α, birdNonUnitalNonAssocCommRing birdRingInst]
-
-def mkAddP {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q($α → $α → $α) :=
-  let addInst : Q(Add $α) :=
-    mkAppN (mkConst ``Distrib.toAdd [u]) #[α, birdDistrib birdRingInst]
-  let hAddInst : Q(HAdd $α $α $α) :=
-    mkAppN (mkConst ``instHAdd [u]) #[α, addInst]
-  mkAppN (mkConst ``HAdd.hAdd [u, u, u]) #[α, α, α, hAddInst]
-
-def mkMulP {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q($α → $α → $α) :=
-  let mulInst : Q(Mul $α) :=
-    mkAppN (mkConst ``Distrib.toMul [u]) #[α, birdDistrib birdRingInst]
-  let hMulInst : Q(HMul $α $α $α) :=
-    mkAppN (mkConst ``instHMul [u]) #[α, mulInst]
-  mkAppN (mkConst ``HMul.hMul [u, u, u]) #[α, α, α, hMulInst]
-
-def mkNegP {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q($α → $α) :=
-  let mulZeroClass :=
-    mkAppN (mkConst ``instMulZeroClassOfSemiring [u]) #[
-      α, birdSemiring birdRingInst]
-  let hasDistribNeg :=
-    mkAppN (mkConst ``NonUnitalNonAssocRing.toHasDistribNeg [u]) #[
-      α, birdNonUnitalNonAssocRing birdRingInst]
-  let negZeroClass :=
-    mkAppN (mkConst ``MulZeroClass.negZeroClass [u]) #[α, mulZeroClass, hasDistribNeg]
-  let negInst : Q(Neg $α) :=
-    mkAppN (mkConst ``NegZeroClass.toNeg [u]) #[α, negZeroClass]
-  mkAppN (mkConst ``Neg.neg [u]) #[α, negInst]
-
-def mkPowP {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q($α → Nat → $α) :=
-  let powInst :=
-    mkAppN (mkConst ``Monoid.toPow [u]) #[α, birdMonoid birdRingInst]
-  let hPowInst : Q(HPow $α Nat $α) :=
-    mkAppN (mkConst ``instHPow [u, 0]) #[α, q(Nat), powInst]
-  mkAppN (mkConst ``HPow.hPow [u, 0, u]) #[α, q(Nat), α, hPowInst]
-
-def mkOne {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) : Q($α) :=
-  let oneInst :=
-    mkAppN (mkConst ``AddMonoidWithOne.toOne [u]) #[
-      α, birdAddMonoidWithOne birdRingInst]
-  let ofNatOneInst :=
-    mkAppN (mkConst ``One.toOfNat1 [u]) #[α, oneInst]
-  mkAppN (mkConst ``OfNat.ofNat [u]) #[α, mkNatLit 1, ofNatOneInst]
-
-def mkGetP {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) (dimensionExpr : Q(Nat)) (array : Q(Array $α)) :
-    Q(Nat → Nat → $α) :=
-  mkAppN (mkConst ``BirdDet.get [u]) #[α, birdRingInst, dimensionExpr, array]
-
-def ofCommRing {u : Level} {α : Q(Type u)}
-    (birdRingInst : Q(CommRing $α)) (dimensionExpr : Q(Nat)) (array : Q(Array $α)) :
-    CtxOps α :=
-  { getP := mkGetP birdRingInst dimensionExpr array
-    addP := mkAddP birdRingInst
-    mulP := mkMulP birdRingInst
-    negP := mkNegP birdRingInst
-    powP := mkPowP birdRingInst
-    one := mkOne birdRingInst }
-
-end CtxOps
+/-- Construct a `CommSemiring` instance from a `CommRing` instance -/
+abbrev commSemiringOfCommRing {u : Level} {α : Q(Type u)}
+    (rα : Q(CommRing $α)) : Q(CommSemiring $α) :=
+  q(@CommRing.toCommSemiring $α $rα)
 
 /-- The context for a `certBirdDet` computation -/
-structure Ctx {u : Level} {α : Q(Type u)} (sα : Q(CommSemiring $α)) where
+structure Ctx {u : Level} {α : Q(Type u)} (rα : Q(CommRing $α)) where
   /-- `Ring` evaluation cache for the scalar ring. -/
-  cα : Common.Cache sα
+  cα : Common.Cache (commSemiringOfCommRing rα)
   /-- Proof-producing ring arithmetic. -/
-  rc : Common.RingCompute RatCoeff sα
-  /--
-  The exact `CommRing` instance from the reified `birdDet` term. Bird-side
-  terms and ring normalization use this same expression so generated proofs
-  remain definitionally aligned with the original goal.
-  -/
-  birdRingInst : Q(CommRing $α)
-  dimension : Nat
-  dimensionExpr : Q(Nat)
-  array : Q(Array $α)
-  arrayEntries : Array Q($α)
-  /-- Canonical operations and matrix accessors built from `birdRingInst`. -/
-  ops : CtxOps α
+  rc : Common.RingCompute RatCoeff (commSemiringOfCommRing rα)
+  /-- The reified determinant payload. -/
+  info : BirdDetData rα
 
 namespace Ctx
 
-def applyEqLemma (name : Name) (u : Level) (args : Array Expr) : MetaM (EqProof α) := do
-  let proof := mkAppN (mkConst name [u]) args
-  Meta.expectProof (α := α) ("Ctx.applyEqLemma: " ++ toString name) proof
+/-- Build the certificate context from a reified `birdDet` call. -/
+def ofBirdDetInfo (info : BirdDetInfo) : Ctx info.rα :=
+  let sα := commSemiringOfCommRing info.rα
+  let cα : Common.Cache sα := { rα := some info.rα
+                                dsα := none
+                                czα := none }
+  { cα
+    rc := ringCompute cα
+    info := info.data }
 
-def add (ctx : Ctx sα) (x y : Q($α)) : Q($α) :=
-  let addP := ctx.ops.addP
-  q($addP $x $y)
+def getP (ctx : Ctx rα) : Q(Nat → Nat → $α) :=
+  let n : ℕ := ctx.info.dimension
+  q(BirdDet.get $n $ctx.info.arrayExpr)
 
-def mul (ctx : Ctx sα) (x y : Q($α)) : Q($α) :=
-  let mulP := ctx.ops.mulP
-  q($mulP $x $y)
+def iterP (ctx : Ctx rα) (t : Nat) : Q(Nat → Nat → $α) :=
+  let dim : ℕ := ctx.info.dimension
+  q(BirdDet.iter $dim $ctx.info.arrayExpr $t $ctx.getP)
 
-def neg (ctx : Ctx sα) (x : Q($α)) : Q($α) :=
-  let negP := ctx.ops.negP
-  q($negP $x)
+def sumFrom (ctx : Ctx rα) (lo : Nat) (f : Q(Nat → $α)) : Q($α) :=
+  let dim : ℕ := ctx.info.dimension
+  q(BirdDet.sumFrom $dim $lo $f)
 
-def pow (ctx : Ctx sα) (x : Q($α)) (k : Nat) : Q($α) :=
-  let powP := ctx.ops.powP
-  let k : Q(Nat) := mkNatLit k
-  q($powP $x $k)
+/-- Equality proofs for Bird recurrence equations. -/
 
-def iterP (ctx : Ctx sα) (t : Nat) : Q(Nat → Nat → $α) :=
-  mkAppN
-    (mkConst ``iter [u])
-    #[α, ctx.birdRingInst, ctx.dimensionExpr, ctx.array, mkNatLit t, ctx.ops.getP]
+def sumFromStopEq (ctx : Ctx rα) (lo : Nat) (f : Q(Nat → $α)) : MetaM (EqProof α) := do
+  have dim : ℕ := ctx.info.dimension
+  let hNot : Q(¬ $lo < $dim) ← mkDecideProofQ q(¬ $lo < $dim)
+  let lhs : Q($α) := q(BirdDet.sumFrom $dim $lo $f)
+  let proof : Q($lhs = 0) := q(sumFrom_stop $dim $lo $f $hNot)
+  return EqProof.ofQ proof
 
-/-- Returns `fun k => iter n A t F_0 k k -/
-def diagFun (ctx : Ctx sα) (t : Nat) : Q(Nat → $α) :=
-  let iterP := ctx.iterP t
-  q(fun k => $iterP k k)
+def sumFromStepEq (ctx : Ctx rα) (lo : Nat) (f : Q(Nat → $α)) : MetaM (EqProof α) := do
+  have dim : Nat := ctx.info.dimension
+  let hLt : Q($lo < $dim) ← mkDecideProofQ q($lo < $dim)
+  let lhs : Q($α) := q(BirdDet.sumFrom $dim $lo $f)
+  let rhs : Q($α) :=
+    q($f $lo + BirdDet.sumFrom $dim ($lo + 1) $f)
+  let proof : Q($lhs = $rhs) := q(sumFrom_step $dim $lo $f $hLt)
+  return EqProof.ofQ proof
 
-def iterAt (ctx : Ctx sα) (t i j : Nat) : Q($α) :=
-  let i : Q(Nat) := mkNatLit i
-  let j : Q(Nat) := mkNatLit j
-  let iterP := ctx.iterP t
-  q($iterP $i $j)
+def iterZeroEq (ctx : Ctx rα) (i j : Nat) : MetaM (EqProof α) := do
+  let dim : ℕ := ctx.info.dimension
+  let proof := q(iter_zero $dim $ctx.info.arrayExpr $ctx.getP $i $j)
+  return EqProof.ofQ proof
 
-def sumFrom (ctx : Ctx sα) (lo : Nat) (f : Q(Nat → $α)) : Q($α) :=
-  mkAppN (mkConst ``sumFrom [u]) #[
-    α, ctx.birdRingInst, ctx.dimensionExpr, mkNatLit lo, f]
+def iterSuccEq (ctx : Ctx rα) (t i j : Nat) : MetaM (EqProof α) := do
+  let dim : ℕ := ctx.info.dimension
+  let proof := q(iter_succ $dim $ctx.info.arrayExpr $t $ctx.getP $i $j)
+  return EqProof.ofQ proof
 
-def diagSum (ctx : Ctx sα) (t lo : Nat) : Q($α) :=
-  ctx.sumFrom lo (ctx.diagFun t)
+def birdDetZeroEq (ctx : Ctx rα) : MetaM (EqProof α) := do
+  let proof := q(birdDet_zero $ctx.info.arrayExpr)
+  return EqProof.ofQ proof
 
-def tailFun (ctx : Ctx sα) (t i j : Nat) : Q(Nat → $α) :=
-  let i : Q(Nat) := mkNatLit i
-  let j : Q(Nat) := mkNatLit j
-  let iterP := ctx.iterP t
-  let getP := ctx.ops.getP
-  let mulP := ctx.ops.mulP
-  q(fun k => $mulP ($iterP $i k) ($getP k $j))
+def birdDetEq (ctx : Ctx rα) (k : Nat) : MetaM (EqProof α) := do
+  have dim : Q(ℕ) := mkNatLitQ ctx.info.dimension
+  have : $dim =Q $k + 1 := ⟨⟩
+  let hn : Q($dim = $k + 1) := q(rfl)
+  let proof := q(birdDet_eq $dim $k $ctx.info.arrayExpr $hn)
+  return EqProof.ofQ proof
 
-def birdSign (ctx : Ctx sα) (k : Nat) : Q($α) :=
-  ctx.pow (ctx.neg ctx.ops.one) k
-
-def sumFromStopEq (ctx : Ctx sα) (lo : Nat) (f : Q(Nat → $α)) : MetaM (EqProof α) := do
-  let hNot ← Meta.mkNotLtProof lo ctx.dimension
-  Ctx.applyEqLemma (α := α) ``sumFrom_stop u #[
-    (α : Expr), ctx.birdRingInst, ctx.dimensionExpr, mkNatLit lo, f, hNot]
-
-def sumFromStepEq (ctx : Ctx sα) (lo : Nat) (f : Q(Nat → $α)) : MetaM (EqProof α) := do
-  let hLt ← Meta.mkLtProof lo ctx.dimension
-  Ctx.applyEqLemma (α := α) ``sumFrom_step u #[
-    (α : Expr), ctx.birdRingInst, ctx.dimensionExpr, mkNatLit lo, f, hLt]
-
-def iterZeroEq (ctx : Ctx sα) (i j : Nat) : MetaM (EqProof α) :=
-  Ctx.applyEqLemma (α := α) ``iter_zero u #[
-    (α : Expr), ctx.birdRingInst, ctx.dimensionExpr, ctx.array, ctx.ops.getP,
-    mkNatLit i, mkNatLit j]
-
-def iterSuccEq (ctx : Ctx sα) (t i j : Nat) : MetaM (EqProof α) :=
-  Ctx.applyEqLemma (α := α) ``iter_succ u #[
-    (α : Expr), ctx.birdRingInst, ctx.dimensionExpr, ctx.array, mkNatLit t,
-    ctx.ops.getP, mkNatLit i, mkNatLit j]
-
-def birdDetZeroEq (ctx : Ctx sα) : MetaM (EqProof α) :=
-  Ctx.applyEqLemma (α := α) ``birdDet_zero u #[
-    (α : Expr), ctx.birdRingInst, ctx.array]
-
-def birdDetEq (ctx : Ctx sα) (k : Nat) : MetaM (EqProof α) := do
-  let kSucc  : Q(ℕ) := q($k + 1)
-  have dim : Q(ℕ) := ctx.dimensionExpr
-  have : $dim =Q $kSucc := ⟨⟩
-  let hn : Q($dim = $kSucc) := q(rfl)
-  let proof := q(@birdDet_eq $α $ctx.birdRingInst $dim $k $ctx.array $hn)
-  return .mk proof
-
-
-/-- Constructs an equality between `get i j` and `arrayEntries[i * dimension + j]`.
-
-app: `get ctx.dimension ctx.array i j`
-result: `ctx.arrayEntries[i * ctx.dimension + j]`
-proof: app = result
--/
-def get (ctx : Ctx sα) (i j : Nat) : MetaM (EqProof α) := do
-  let lhs := mkApp2 ctx.ops.getP (mkNatLit i) (mkNatLit j)
-  let idx := i * ctx.dimension + j
-  let zero : Q($α) := q(0)
-  let result := ctx.arrayEntries.getD idx zero
-  let lhs : Q($α) := lhs
-  let rhs : Q($α) := result
-  let proof ← mkExpectedTypeHint (← mkEqRefl rhs) (← mkEq lhs rhs)
-  return {lhs, rhs, proof}
+/-- Constructs an equality between `get i j` and `arrayEntries[i * dimension + j]`. -/
+def getEntryEq (ctx : Ctx rα) (i j : Nat) : MetaM (EqProof α) := do
+  let dim : ℕ := ctx.info.dimension
+  let lhs : Q($α) := q(BirdDet.get $dim $ctx.info.arrayExpr $i $j)
+  let idx := i * ctx.info.dimension + j
+  let rhs : Q($α) := ctx.info.arrayEntries.getD idx q(0)
+  have : $lhs =Q $rhs := ⟨⟩
+  let proof : Q($lhs = $rhs) := q(rfl)
+  return EqProof.ofQ proof
 
 end Ctx
 

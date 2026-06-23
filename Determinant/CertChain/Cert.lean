@@ -3,10 +3,6 @@ module
 public import Determinant.CertChain.Ctx
 public import Mathlib.Tactic.Ring
 public import Qq
-public meta import Lean.Meta.AppBuilder
-public meta import Lean.Meta.LitValues
-public meta import Lean.Meta.Transform
-public meta import Lean.Elab.Tactic.Basic
 
 open Lean Meta Qq
 open Mathlib.Tactic (AtomM)
@@ -15,164 +11,182 @@ open BirdDet
 
 public meta section
 
+/-- The ring tactic representation of a normalized certificate expression. -/
+abbrev CertVal {u : Level} {α : Q(Type u)}
+    (rα : Q(CommRing $α)) (e : Q($α)) :=
+  Common.ExSum RatCoeff (commSemiringOfCommRing rα) e
+
+/-- The ring-normalization result carried by a certificate. -/
+abbrev CertResult {u : Level} {α : Q(Type u)}
+    (rα : Q(CommRing $α)) (subject : Q($α)) :=
+  Common.Result (CertVal rα) subject
+
 /--
 A `Cert` represents an equality:
 
 ```
-subject = norm
+subject = result.expr
 ```
-where the `subject` is the lhs of the `proof`'s type.
+
+where `result.expr` is the Ring tacric normal form.
 -/
-structure Cert {u : Level} {α : Q(Type u)} (sα : Q(CommSemiring $α)) where
-  /-- Proof that the subject is equal to the `Ring` tactic normal form. -/
-  eq : Meta.EqProof α
-  /-- The internal ring tactic representation of `norm` -/
-  val : Common.ExSum RatCoeff sα eq.rhs
-  /-- `true` when `norm` is zero, this is computed from `val` during ring evaluation -/
+structure Cert {u : Level} {α : Q(Type u)} (rα : Q(CommRing $α)) where
+  /-- The expression being certified. -/
+  {subject : Q($α)}
+  /-- The resul of evaluating `subject` using the ring tactic. -/
+  result : CertResult rα subject
+  /-- `true` when `norm` is zero, used as a hint to the evaluator. -/
   isZero : Bool
-
-end
-
-public section
 
 namespace Cert
 
 variable
   {u : Level}
   {α : Q(Type u)}
-  {sα : Q(CommSemiring $α)}
-
-/-- The certificate subject. -/
-def subject (c : Cert sα) : Q($α) :=
-  c.eq.lhs
+  {rα : Q(CommRing $α)}
 
 /-- The `Ring` tactic normal form that the subject is equal to. -/
-def norm (c : Cert sα) : Q($α) :=
-  c.eq.rhs
+def norm (c : Cert rα) : Q($α) :=
+  c.result.expr
+
+/-- The internal ring tactic representation of the normal form. -/
+def val (c : Cert rα) : CertVal rα c.norm :=
+  c.result.val
 
 /-- Proof that the subject is equal to the normal form. -/
-def proof (c : Cert sα) : Q($c.subject = $c.norm) :=
-  c.eq.proof
+def proof (c : Cert rα) : Q($c.subject = $c.norm) :=
+  c.result.proof
+
+/-- Repackage the certificate as the local equality-proof helper. -/
+def eq (c : Cert rα) : Meta.EqProof α :=
+  { lhs := c.subject, rhs := c.norm, proof := c.proof }
 
 end Cert
 
-end
-
-public meta section
-
-namespace Cert
-
 variable
   {u : Level}
   {α : Q(Type u)}
-  {sα : Q(CommSemiring $α)}
+  {rα : Q(CommRing $α)}
+
+namespace Meta.EqProof
+
+/-- Extend an equality proof with a certificate for its right-hand side.
+
+If `h : e = c.subject` and `c.proof : c.subject = c.norm`
+returns a certificate for `e = c.norm`.
+-/
+def chain (h : Meta.EqProof α) (c : Cert rα) : MetaM (Cert rα) := do
+  have : $h.rhs =Q $c.eq.lhs := ⟨⟩
+  let hProof : Q($h.lhs = $c.eq.lhs) := h.proof
+  let proof : Q($h.lhs = $c.eq.rhs) := q(Eq.trans $hProof $c.eq.proof)
+  let result : CertResult rα h.lhs := {
+    expr := c.norm
+    val := c.val
+    proof
+  }
+  return {
+    result
+    isZero := c.isZero
+  }
+
+end Meta.EqProof
+
+namespace Cert
 
 /-- Returns `true` when `val` is `ExSum.zero` -/
-def isZeroVal {e : Q($α)} (val : Common.ExSum RatCoeff sα e) : Bool :=
+def isZeroVal {e : Q($α)} (val : CertVal rα e) : Bool :=
   match val with
   | .zero => true
   | .add .. => false
 
+/-- The scalar zero built with the exact ring instance used by the certificate. -/
+def scalarZero : Q($α) :=
+  q(letI : CommRing $α := $rα; 0)
+
 /-- Repackage a `Ring` evaluation result as a certificate. -/
-def toCert {e : Q($α)} (res : Common.Result (Common.ExSum RatCoeff sα) e) : Cert sα :=
-  { eq := {lhs := e, rhs := res.expr, proof := res.proof}
-    val := res.val
+def toCert {e : Q($α)} (res : Common.Result (CertVal rα) e) : Cert rα :=
+  { result := res
     isZero := isZeroVal res.val }
 
-/-- Chain an equality proof into a certificate:
-if `h : e = c.subject` and `c.proof : c.subject = c.norm`, return `e = c.norm`. -/
-def chain (c : Cert sα) (h : Meta.EqProof α) : MetaM (Cert sα) := do
-  let proof ← mkEqTrans h.proof c.eq.proof
-  let proof ← mkExpectedTypeHint proof q($h.lhs = $c.eq.rhs)
-  return {
-    eq := {lhs := h.lhs, rhs := c.eq.rhs, proof}
-    val := c.val
-    isZero := c.isZero
-  }
-
 /-- Cast an existing `proof : subject = 0` as a certificate for the canonical zero. -/
-def zeroCertOf (eq : Meta.EqProof α) : MetaM (Cert sα) := do
+def zeroCertOf (eq : Meta.EqProof α) : MetaM (Cert rα) := do
   let zero : Q($α) := q(0)
-  let proof ← mkExpectedTypeHint eq.proof q($eq.lhs = $zero)
-  return {
-    eq := {lhs := eq.lhs, rhs := zero, proof}
+  have : $eq.rhs =Q $zero := ⟨⟩
+  let proof : Q($eq.lhs = $zero) := eq.proof
+  let result : CertResult rα eq.lhs := {
+    expr := zero
     val := .zero
+    proof
+  }
+  return {
+    result
     isZero := true
   }
 
 /-- Given `cz.proof : cz.subject! = 0`, certify the product `x * cz.subject =
   0` without evaluating `x`.
-
-`mulP` is HMul.hmul, partially applied with types and instances.
 -/
-def zeroProdCert (mulP : Q($α → $α → $α)) (x : Q($α)) (cz : Cert sα) :
-    MetaM (Cert sα) := do
+def zeroProdCert (x : Q($α)) (cz : Cert rα) :
+    MetaM (Cert rα) := do
   -- x * (cz.subject) = x * 0
-  let mulX : Q($α → $α) := q($mulP $x)
+  let mulX : Q($α → $α) := q(fun y => $x * y)
   let h1 ← Meta.mkCongrUnop mulX cz.eq
   -- x * 0 = 0
-  let h2 ← mkAppM ``mul_zero #[x]
+  let xMulZero : Q($α) := q($x * 0)
+  let h2 : Q($xMulZero = 0) := q(mul_zero $x)
   -- x * (cz.subject) = 0
-  let h ← mkEqTrans h1.proof h2
-  zeroCertOf (← Meta.expectProof (α := α) "zeroProdCert" h)
+  let xMulSubject : Q($α) := q($x * $cz.eq.lhs)
+  let ⟨h1Lhs⟩ ← assertDefEqQ h1.lhs xMulSubject
+  let ⟨h1Rhs⟩ ← assertDefEqQ h1.rhs xMulZero
+  have : $h1.lhs =Q $xMulSubject := h1Lhs
+  have : $h1.rhs =Q $xMulZero := h1Rhs
+  let h1Proof : Q($xMulSubject = $xMulZero) := h1.proof
+  let proof : Q($xMulSubject = 0) := q(Eq.trans $h1Proof $h2)
+  zeroCertOf (EqProof.ofQ proof)
 
 /-- A cache of proof certificates -/
-structure CertCache {u : Level} {α : Q(Type u)} (sα : Q(CommSemiring $α)) where
+structure CertCache {u : Level} {α : Q(Type u)} (rα : Q(CommRing $α)) where
   /-- Cache for entry certificates, keyed by matrix indices. -/
-  entryCache : Std.HashMap (Nat × Nat) (Cert sα) := {}
+  entryCache : Std.HashMap (Nat × Nat) (Cert rα) := {}
   /-- Cache for `iter` certificates, keyed by recursion index and matrix indices. -/
-  iterCache : Std.HashMap (Nat × Nat × Nat) (Cert sα) := {}
+  iterCache : Std.HashMap (Nat × Nat × Nat) (Cert rα) := {}
   /-- Cache for diagonal-tail certificates, keyed by recursion index and lower bound. -/
-  diagCache : Std.HashMap (Nat × Nat) (Cert sα) := {}
+  diagCache : Std.HashMap (Nat × Nat) (Cert rα) := {}
 
 /-- The Monad used for computing certificates -/
-abbrev CertM {u : Level} {α : Q(Type u)} (sα : Q(CommSemiring $α)) :=
-  StateT (CertCache sα) (ReaderT (Ctx sα) AtomM)
+abbrev CertM {u : Level} {α : Q(Type u)} (rα : Q(CommRing $α)) :=
+  StateT (CertCache rα) (ReaderT (Ctx rα) AtomM)
 
 /-- Certify the evaluation of `e` using the Ring tactic. -/
-def eval (e : Q($α)) : CertM sα (Cert sα) := do
+def certEval (e : Q($α)) : CertM rα (Cert rα) := do
   let ctx ← read
   let res ← Common.eval rcℕ ctx.rc ctx.cα e
   return toCert res
 
-/-- Certify the evaluation of `a.val + b.val` using the Ring tactic. -/
-def evalAdd (a b : Cert sα) : CertM sα (Cert sα) := do
-  let ctx ← read
-  let res ← Common.evalAdd ctx.rc rcℕ a.val b.val
-  return toCert res
-
-/-- Certify the evaluation of `a.val * b.val` using the Ring tactic. -/
-def evalMul (a b : Cert sα) : CertM sα (Cert sα) := do
-  let ctx ← read
-  let res ← Common.evalMul ctx.rc rcℕ a.val b.val
-  return toCert res
-
-/-- Certify the evaluation of `-a.val` using the Ring tactic. -/
-def evalNeg (a : Cert sα) : CertM sα (Cert sα) := do
-  let ctx ← read
-  let res ← Common.evalNeg ctx.rc ctx.birdRingInst a.val
-  return toCert res
-
 /-- Combine two certificates through addition, then normalize the sum. -/
-def certAdd (a b : Cert sα) : CertM sα (Cert sα) := do
+def certAdd (a b : Cert rα) : CertM rα (Cert rα) := do
   let ctx ← read
-  let h ← Meta.mkCongrBinop ctx.ops.addP a.eq b.eq
-  let c ← evalAdd a b
-  c.chain h
+  let h ← Meta.mkCongrBinop q(fun x y => x + y) a.eq b.eq
+  let c ← toCert <$> Common.evalAdd ctx.rc rcℕ a.val b.val
+  h.chain c
 
 /-- Combine two certificates through multiplication, then normalize the product. -/
-def certMul (a b : Cert sα) : CertM sα (Cert sα) := do
+def certMul (a b : Cert rα) : CertM rα (Cert rα) := do
   let ctx ← read
-  let h ← Meta.mkCongrBinop ctx.ops.mulP a.eq b.eq
-  let c ← evalMul a b
-  c.chain h
+  let h ← Meta.mkCongrBinop q(fun x y => x * y) a.eq b.eq
+  let c ← toCert <$> Common.evalMul ctx.rc rcℕ a.val b.val
+  h.chain c
 
 /-- Combine a certificate through negation, then normalize the result. -/
-def certNeg (a : Cert sα) : CertM sα (Cert sα) := do
+def certNeg (a : Cert rα) : CertM rα (Cert rα) := do
   let ctx ← read
-  let h ← Meta.mkCongrUnop ctx.ops.negP a.eq
-  let c ← evalNeg a
-  c.chain h
+  let h ← Meta.mkCongrUnop q(fun x => -x) a.eq
+  let c ← toCert <$> Common.evalNeg ctx.rc rα a.val
+  h.chain c
+
+/-- Certify the sign term in the bird determinant formula -/
+def certBirdSign (k : Nat) : CertM rα (Cert rα) := do
+  certEval q((-1 : $α) ^ $k)
 
 /-- Returns a certificate whose subject is `get n A i j`.
 
@@ -181,32 +195,30 @@ get n A i j = elem  -- By rfl
             = norm  -- Ring.eval on the entry
 ```
 -/
-def certEntry (i j : Nat) : CertM sα (Cert sα) := do
+def certEntry (i j : Nat) : CertM rα (Cert rα) := do
   if let some c := (← get).entryCache[(i, j)]? then
     return c
   let ctx ← read
-  let elemApp ← ctx.get i j
-  let ce ← eval elemApp.rhs
-  let cert ← ce.chain elemApp
+  let elemApp ← ctx.getEntryEq i j
+  let ce ← certEval elemApp.rhs
+  let cert ← elemApp.chain ce
   modify fun s => {s with entryCache := s.entryCache.insert (i, j) cert}
   return cert
 
-def certSumFromStop (lo : Nat) (f : Q(Nat → $α)) : CertM sα (Cert sα) := do
+def certSumFromStop (lo : Nat) (f : Q(Nat → $α)) : CertM rα (Cert rα) := do
   let ctx ← read
   let eqStop ← ctx.sumFromStopEq lo f
   zeroCertOf eqStop
 
-/-- Certify one `sumFrom` step by certifying the head and recursive tail, then
-normalizing their sum. -/
 def certSumFromStep
     (lo : Nat) (f : Q(Nat → $α))
-    (head tail : CertM sα (Cert sα)) : CertM sα (Cert sα) := do
+    (headCert tailCert : CertM rα (Cert rα)) : CertM rα (Cert rα) := do
   let ctx ← read
   let stepEq ← ctx.sumFromStepEq lo f
-  let chead ← head
-  let ctail ← tail
-  let csum ← certAdd chead ctail
-  csum.chain stepEq
+  let head ← headCert
+  let tail ← tailCert
+  let sumCert ← certAdd head tail
+  stepEq.chain sumCert
 
 mutual
 
@@ -228,7 +240,7 @@ Where `S = ∑_{k>i} F_t k k` and `T = ∑_{k>i} F_t i k * A[k,j]`
 If A[i,j] is certified 0 then S is not required.
 
 -/
-partial def certIter (t i j : Nat) : CertM sα (Cert sα) := do
+partial def certIter (t i j : Nat) : CertM rα (Cert rα) := do
   if let some c := (← get).iterCache[(t, i, j)]? then
     return c
   let ctx ← read
@@ -237,23 +249,27 @@ partial def certIter (t i j : Nat) : CertM sα (Cert sα) := do
       -- iter n A 0 (get n A) = get n
       let iterZeroPf ← ctx.iterZeroEq i j
       let ce ← certEntry i j
-      ce.chain iterZeroPf
+      iterZeroPf.chain ce
     | t' + 1 => do
       let iterSuccPf ← ctx.iterSuccEq t' i j
-      let negS := ctx.neg (ctx.diagSum t' (i + 1))
-      -- A[i,j]
-      let ce ← certEntry i j
-      let cd ← 
-        if ce.isZero then
-          zeroProdCert ctx.ops.mulP negS ce
+      -- First summand in `iter_succ`:
+      --   -(sumFrom n (i + 1) fun k => F_t k k) * A[i,j]
+      let negDiagSum :=
+        q(-$(ctx.sumFrom (i + 1) q(fun k => $(ctx.iterP t') k k)))
+      let entryCert ← certEntry i j
+      let diagProdCert ←
+        if entryCert.isZero then
+          zeroProdCert negDiagSum entryCert
         else do
-          let cdiag ← certDiag t' (i + 1)
-          let cneg ← certNeg cdiag
-          certMul cneg ce
-      let f := ctx.tailFun t' i j
-      let ct ← certTail t' i j (i + 1) f
-      let cs ← certAdd cd ct
-      cs.chain iterSuccPf
+          let diagSumCert ← certDiag t' (i + 1)
+          let negDiagSumCert ← certNeg diagSumCert
+          certMul negDiagSumCert entryCert
+      -- Second summand in `iter_succ`:
+      --   sumFrom n (i + 1) fun k => F_t i k * A[k,j]
+      -- let tailSummand := ctx.tailFun t' i j
+      let tailSumCert ← certTail t' i j (i + 1)
+      let rhsCert ← certAdd diagProdCert tailSumCert
+      iterSuccPf.chain rhsCert
   modify fun s => {s with iterCache := s.iterCache.insert (t, i, j) cert}
   return cert
 
@@ -280,16 +296,24 @@ sumFrom n lo diagFun
 ```
 
 -/
-partial def certDiag (t lo : Nat) : CertM sα (Cert sα) := do
+partial def certDiag (t lo : Nat) : CertM rα (Cert rα) := do
   if let some c := (← get).diagCache[(t, lo)]? then
     return c
   let ctx ← read
-  let cert ← 
-    if lo < ctx.dimension
+  let diagonalSummand := q(fun k => $(ctx.iterP t) k k)
+  let cert ←
+    if lo < ctx.info.dimension
     then do
-      certSumFromStep lo (ctx.diagFun t) (certIter t lo lo) (certDiag t (lo + 1))
+      -- Bird term: `sumFrom n lo fun k => F_t k k`.
+      let headCert := certIter t lo lo
+      let tailCert := certDiag t (lo + 1)
+      certSumFromStep
+        (lo := lo)
+        (f := diagonalSummand)
+        (headCert := headCert)
+        (tailCert := tailCert)
     else
-      certSumFromStop lo (ctx.diagFun t)
+      certSumFromStop lo diagonalSummand
   modify fun s => {s with diagCache := s.diagCache.insert (t, lo) cert}
   return cert
 
@@ -325,41 +349,48 @@ F_t[i,lo] * A[lo,j]
 And we can check if A[lo,j] is zero and avoid certifying `F_t[i,lo]`.
 
 -/
-partial def certTail (t i j lo : Nat) (f : Q(Nat → $α)) : CertM sα (Cert sα) := do
+partial def certTail (t i j lo : Nat) : CertM rα (Cert rα) := do
   let ctx ← read
-  if lo < ctx.dimension
+  let tailSummand := q(fun k => $(ctx.iterP t) $i k * $(ctx.getP) k $j)
+  if lo < ctx.info.dimension
   then do
-    let head := do
-      -- Certify F_t[i,lo] * A[lo,j]
-      let ce_lo_j ← certEntry lo j
-      -- If A[lo,j] = 0 then we can avoid computing the product.
-      if ce_lo_j.isZero
-      then zeroProdCert ctx.ops.mulP (ctx.iterAt t i lo) ce_lo_j
+    -- Bird term: `sumFrom n lo fun k => F_t i k * A[k,j]`.
+    let headCert := do
+      -- Certify `F_t[i,lo] * A[lo,j]`.
+      let entryCert ← certEntry lo j
+      -- If `A[lo,j] = 0`, avoid certifying `F_t[i,lo]`.
+      if entryCert.isZero
+      then zeroProdCert q($(ctx.iterP t) $i $lo) entryCert
       else do
-        let ci ← certIter t i lo
-        certMul ci ce_lo_j
-    certSumFromStep lo f head (certTail t i j (lo + 1) f)
+        let iterCert ← certIter t i lo
+        certMul iterCert entryCert
+    let tailCert := certTail t i j (lo + 1)
+    certSumFromStep
+      (lo := lo)
+      (f := tailSummand)
+      (headCert := headCert)
+      (tailCert := tailCert)
   else
-    certSumFromStop lo f
+    certSumFromStop lo tailSummand
 
 end
 
-def certBirdDet : CertM sα (Cert sα) := do
+def certBirdDet : CertM rα (Cert rα) := do
   let ctx ← read
-  if ctx.dimension == 0
+  if ctx.info.dimension == 0
   then
     let birdDetZeroPf ← ctx.birdDetZeroEq
-    let ce ← eval birdDetZeroPf.rhs
-    ce.chain birdDetZeroPf
+    let ce ← certEval birdDetZeroPf.rhs
+    birdDetZeroPf.chain ce
   else
-    -- The non-zero `birdDet_eq` branch matches `k + 1` 
-    -- so we set k := `ctx.dimension - 1`.
-    let k := ctx.dimension - 1
+    -- The non-zero `birdDet_eq` branch matches `k + 1`
+    -- so we set k := `ctx.info.dimension - 1`.
+    let k := ctx.info.dimension - 1
     let birdDetEq ← ctx.birdDetEq k
-    let cs ← eval (ctx.birdSign k)
+    let cs ← certBirdSign k
     let ci ← certIter k 0 0
     let cm ← certMul cs ci
-    cm.chain birdDetEq
+    birdDetEq.chain cm
 
 end Cert
 

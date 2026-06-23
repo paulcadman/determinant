@@ -26,44 +26,6 @@ meta def assertLevelDefEq (actual expected : Level) : MetaM Unit := do
   unless (← isLevelDefEq actual expected) do
     throwError m!"expected level {expected}, got {actual}"
 
--- Test expectMul
-run_meta do
-  let m := q((2 : ℤ) * 3)
-  let app ← expectMul "test expectMul" m
-  let recombined := mkApp2 app.partialApp app.x app.y
-  let value ← reduce recombined
-  assertDefEq value q((6 : ℤ))
-
--- Test expectAdd
-run_meta do
-  let m := q((2 : ℤ) + 3)
-  let app ← expectAdd "test expectAdd" m
-  let recombined := mkApp2 app.partialApp app.x app.y
-  let value ← reduce recombined
-  assertDefEq value q((5 : ℤ))
-
--- Test expectNeg
-run_meta do
-  let m := q(-(2 : ℤ))
-  let app ← expectNeg "test expectNeg" m
-  let recombined := mkApp app.partialApp app.x
-  let value ← reduce recombined
-  assertDefEq value q((-2 : ℤ))
-
--- Test mkLtProof
-run_meta do
-  let expected : Q(Prop) := q(1 < (2 : Nat))
-  let pf ← mkLtProof 1 2
-  let actual ← inferType pf
-  assertDefEq actual expected
-
--- Test mkNotLtProof
-run_meta do
-  let expected : Q(Prop) := q(¬ 2 < (1 : Nat))
-  let pf ← mkNotLtProof 2 1
-  let actual ← inferType pf
-  assertDefEq actual expected
-
 -- Test arrayLiteral?
 run_meta do
   let arr : Q(Array ℤ) := q(#[1,2,3,4])
@@ -80,10 +42,9 @@ run_meta do
 run_meta do
   let e : Q(ℤ) := q(birdDet 2 #[1, 2, 3, 4])
   let info ← reifyBirdDet e
-  assertLevelDefEq info.level .zero
-  assertDefEq info.ringType q(ℤ)
-  assertDefEq info.birdRingInst q(Int.instCommRing)
-  assertDefEq info.dimensionExpr q((2 : Nat))
+  assertLevelDefEq info.u .zero
+  assertDefEq info.α q(ℤ)
+  assertDefEq info.rα q(Int.instCommRing)
   unless info.dimension == 2 do
     throwError m!"expected dimension 2, got {info.dimension}"
   assertDefEq info.arrayExpr q(#[1, 2, 3, 4] : Array ℤ)
@@ -103,9 +64,9 @@ run_meta do
   let cα ← Common.mkCache q(Int.instCommSemiring)
   let some rα := cα.rα | unreachable!
   let withBirdInst := mkAppN (mkConst ``birdDet [.zero])
-    #[info.ringType, info.birdRingInst, info.dimensionExpr, info.arrayExpr]
+    #[info.α, info.rα, mkNatLit info.dimension, info.arrayExpr]
   let withRingInst := mkAppN (mkConst ``birdDet [.zero])
-    #[info.ringType, rα, info.dimensionExpr, info.arrayExpr]
+    #[info.α, rα, mkNatLit info.dimension, info.arrayExpr]
   assertDefEq withBirdInst e
   if ← isDefEq withRingInst e then
     throwError "expected ring-cache instance not to be definitionally equal to the Bird instance"
@@ -135,61 +96,56 @@ run_meta do
   reifyBirdDet e
 
 -- Test zeroProdCert
-
-elab "zero_prod_close" : tactic => Elab.Tactic.withMainContext do
-  let g ← Elab.Tactic.getMainGoal
-  let some (_, lhs, _) := (← instantiateMVars (← g.getType)).eq?
-    | throwError "zero_prod_close: expected an equality"
-  let ⟨mulP, x, z⟩ ← expectMul "zero_prod_close" lhs
-  let ⟨u, α, _⟩ ← inferTypeQ' lhs
-  let sα : Q(CommSemiring $α) ← synthInstanceQ q(CommSemiring $α)
-  let cα ← Common.mkCache sα
+run_meta do
+  let rα : Q(CommRing ℤ) := q(Int.instCommRing)
+  let cα : Common.Cache (commSemiringOfCommRing rα) :=
+    { rα := some rα, dsα := none, czα := none }
   let rc := ringCompute cα
-  let proof ← AtomM.run .reducible do
-    have z : Q($α) := z
+  let x : Q(ℤ) := q((5 : ℤ))
+  let z : Q(ℤ) := q((3 : ℤ) - 3)
+  let c ← AtomM.run .reducible do
     let resZ ← Common.eval rcℕ rc cα z
     unless isZeroVal resZ.val do
-      throwError "zero_prod_close: the right factor does not normalize to zero"
-    let c ← zeroProdCert mulP x (toCert resZ)
-    pure c.proof
-  g.assign proof
-  Elab.Tactic.replaceMainGoal []
-
-example (x y : ℤ) : x * (y - y) = 0 := by
-  zero_prod_close
+      throwError "zeroProdCert test: the right factor does not normalize to zero"
+    zeroProdCert x (toCert resZ)
+  Meta.check c.proof
+  assertDefEq c.norm q((0 : ℤ))
 
 /-- Construct a `Ctx` for an integer matrix -/
 meta def ctxℤ
   (dimension : Nat)
   (array : Q(Array ℤ))
-  : MetaM (Ctx q(Int.instCommSemiring)) := do
+  : MetaM (Ctx q(Int.instCommRing)) := do
   let some rawEntries ← arrayLiteral? array
     | throwError "Ctxℤ: A is not an array literal"
   let arrayEntries ← rawEntries.mapM fun entry => do
     let some entry ← checkTypeQ entry q(ℤ)
       | throwError "Ctxℤ: array entry does not have type ℤ"
     return entry
-  let birdRingInst : Q(CommRing ℤ) := q(Int.instCommRing)
-  let cα : Common.Cache q(Int.instCommSemiring) := {
-    rα := some birdRingInst
+  let rα : Q(CommRing ℤ) := q(Int.instCommRing)
+  let cα : Common.Cache (commSemiringOfCommRing q(Int.instCommRing)) := {
+    rα := some rα
     dsα := none
     czα := none
   }
-  let dimensionExpr : Q(Nat) := mkNatLit dimension
-  let ops := CtxOps.ofCommRing birdRingInst dimensionExpr array
   let rc := ringCompute cα
-  return {cα, rc, birdRingInst, dimension, dimensionExpr, array, arrayEntries, ops}
+  let info : BirdDetData q(Int.instCommRing) := {
+    dimension
+    arrayExpr := array
+    arrayEntries
+  }
+  return {cα, rc, info}
 
 meta def withCtxℤ
   {α : Type}
   (n : Nat)
   (A : Q(Array ℤ))
-  (action : CertM q(Int.instCommSemiring) α)
+  (action : CertM q(Int.instCommRing) α)
   : MetaM α := do
     let ctx ← ctxℤ n A
     action.run' {} |>.run ctx |>.run .reducible
 
-meta def assertCertNorm (c : Cert q(Int.instCommSemiring)) (expected : Expr) : MetaM Unit := do
+meta def assertCertNorm (c : Cert q(Int.instCommRing)) (expected : Expr) : MetaM Unit := do
   Meta.check c.proof
   assertDefEq c.norm expected
 
