@@ -1,15 +1,12 @@
 module
 
 public import Determinant.CertChain.Bird
-public import Mathlib.Tactic.Ring
-public import Qq
-public meta import Lean.Meta.AppBuilder
+public meta import Mathlib.Tactic.Ring
+public meta import Mathlib.Util.Qq
 public meta import Lean.Meta.LitValues
 public meta import Lean.Meta.Transform
-public meta import Lean.Elab.Tactic.Basic
 
 open Lean Meta Qq
-open Mathlib.Tactic (AtomM)
 open Mathlib.Tactic.Ring
 open BirdDet
 
@@ -17,130 +14,103 @@ public meta section
 
 namespace Meta
 
-structure BinaryOpApp where
-  partialApp : Expr
-  x : Expr
-  y : Expr
-
-structure UnaryOpApp where
-  partialApp : Expr
-  x : Expr
-
 /-- A convenience type representing an equality proof `proof : lhs = rhs`. -/
 structure EqProof {u : Level} (α : Q(Type u)) where
-  lhs : Q($α)
-  rhs : Q($α)
+  {lhs : Q($α)}
+  {rhs : Q($α)}
   proof : Q($lhs = $rhs)
 
-/-- Parse an `EqProof` or throw -/
-def expectProof {u : Level} {α : Q(Type u)} (context : String) (proof : Expr) :
+def EqProof.ofQ {u : Level} {α : Q(Type u)}
+  {lhs rhs : Q($α)} (proof : Q($lhs = $rhs)) : EqProof α := { proof }
+
+/-- Given `h₁ : x = x'` and `h₂ : y = y'`, construct `opP x y = opP x' y'`. -/
+def mkCongrBinop {u : Level} {α : Q(Type u)}
+    (opP : Q($α → $α → $α)) (h₁ h₂ : EqProof α) :
     MetaM (EqProof α) := do
-  let some (_, lhs, rhs) := (← inferType proof).eq?
-    | throwError "{context}: expected equality proof, got {proof}"
-  let some lhs ← checkTypeQ lhs α
-    | throwError "{context}: lhs does not have expected type{indentExpr α}"
-  let some rhs ← checkTypeQ rhs α
-    | throwError "{context}: rhs does not have expected type{indentExpr α}"
-  let proof ← mkExpectedTypeHint proof (← mkEq lhs rhs)
+  let lhs : Q($α) := q($opP $h₁.lhs $h₂.lhs)
+  let rhs : Q($α) := q($opP $h₁.rhs $h₂.rhs)
+  let proof ← mkCongr (← mkCongrArg opP h₁.proof) h₂.proof
   return {lhs, rhs, proof}
 
-/-- Parse an addition expression or throw. -/
-def expectAdd (context : String) (e : Expr) : MetaM BinaryOpApp := do
-  match_expr e with
-  | HAdd.hAdd α β γ inst x y =>
-      return ⟨mkApp4 e.getAppFn α β γ inst, x, y⟩
-  | _ => throwError "{context}: expected add, got {e}"
+/-- Given `h : x = x'`, construct `opP x = opP x'`. -/
+def mkCongrUnop {u : Level} {α : Q(Type u)}
+    (opP : Q($α → $α)) (h : EqProof α) :
+    MetaM (EqProof α) := do
+  let lhs : Q($α) := q($opP $h.lhs)
+  let rhs : Q($α) := q($opP $h.rhs)
+  let proof ← mkCongrArg opP h.proof
+  return {lhs, rhs, proof}
 
-/-- Parse a multiplication expression or throw. -/
-def expectMul (context : String) (e : Expr) : MetaM BinaryOpApp := do
-  match_expr e with
-  | HMul.hMul α β γ inst x y =>
-      return ⟨mkApp4 e.getAppFn α β γ inst, x, y⟩
-  | _ => throwError "{context}: expected mul, got {e}"
-
-/-- Parse a negation expression or throw. -/
-def expectNeg (context : String) (e : Expr) : MetaM UnaryOpApp := do
-  match_expr e with
-  | Neg.neg α inst x =>
-      return ⟨mkApp2 e.getAppFn α inst, x⟩
-  | _ => throwError "{context}: expected neg, got {e}"
-
-/-- Extract the function argument from a `sumFrom` expression. -/
-def expectSumFromFun (context : String) (e : Expr) : MetaM Expr := do
-  let_expr sumFrom _ _ _ _ f := e
-    | throwError "{context}: expected sumFrom, got {e}"
-  return f
-
-/-- Given h₁ : x = x' and h₂ : y = y', construct `opP x y = opP x' y'` -/
-def mkCongrBinop (opP h₁ h₂ : Expr) : MetaM Expr := do
-  mkCongr (← mkCongrArg opP h₁) h₂
-
-/-- Chain three equalities `h₁ : a = b`, `h₂ : b = c`, `h₃ : c = d` into `a = d` -/
-def trans3 (h₁ h₂ h₃ : Expr) : MetaM Expr := do
-  mkEqTrans h₁ (← mkEqTrans h₂ h₃)
-
-/-- A proof of `lo < n` by `decide` -/
-def mkLtProof (lo n : Nat) : MetaM Expr := do
-  unless lo < n do
-    throwError m!"failed to prove {lo} < {n}"
-  let p ← mkAppOptM ``LT.lt #[
-    mkConst ``Nat,
-    mkConst ``instLTNat,
-    mkNatLit lo,
-    mkNatLit n
-  ]
-  let inst ← synthInstance (mkApp (mkConst ``Decidable) p)
-  return mkApp3 (mkConst ``of_decide_eq_true) p inst (← mkEqRefl (mkConst ``Bool.true))
-
-/-- A proof of `¬ lo < n` by `decide` -/
-def mkNotLtProof (lo n : Nat) : MetaM Expr := do
-  unless ¬ lo < n do
-    throwError m!"failed to prove ¬ {lo} < {n}"
-  let p ← mkAppOptM ``LT.lt #[
-    mkConst ``Nat,
-    mkConst ``instLTNat,
-    mkNatLit lo,
-    mkNatLit n
-  ]
-  let inst ← synthInstance (mkApp (mkConst ``Decidable) p)
-  return mkApp3 (mkConst ``of_decide_eq_false) p inst (← mkEqRefl (mkConst ``Bool.false))
-
-/-- Parse an array literal into an array of element exrpessions -/
+/-- Parse an array literal into an array of element expressions. -/
 def arrayLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
+  if let some elems ← getArrayLit? e then return some elems
   let e ← zetaReduce (← whnf e)
   match_expr e with
-  | Array.mk _ xs =>
-      let some elems ← getListLit? xs | return none
-      return some elems
-  | List.toArray _ xs =>
-      let some elems ← getListLit? xs | return none
-      return some elems
+  | Array.mk _ xs => getListLit? xs
   | _ => return none
 
-/-- Information parsed by `reifyBirdDet` -/
-structure BirdDetInfo where
-  level : Level
-  ringType : Expr
-  birdRingInst : Expr
+/-- The typed matrix data parsed from a `birdDet` call. -/
+structure BirdDetData {u : Level} {α : Q(Type u)} (rα : Q(CommRing $α)) where
+  /-- The dimension of the reified matrix -/
   dimension : Nat
-  dimensionExpr : Expr
-  arrayExpr : Expr
-  arrayEntries : Array Expr
+  /-- The array of matrix entries as an Expr -/
+  arrayExpr : Q(Array $α)
+  /-- An array of matrix entry `Expr`s` -/
+  arrayEntries : Array Q($α)
 
+/-- Information parsed by `reifyBirdDet`. -/
+structure BirdDetInfo where
+  {u : Level}
+  {α : Q(Type u)}
+  /-- The `CommRing` instance for matrix entries -/
+  rα : Q(CommRing $α)
+  /-- The typed matrix data parsed from the determinant expression. -/
+  data : BirdDetData rα
+
+namespace BirdDetInfo
+
+def dimension (info : BirdDetInfo) : Nat :=
+  info.data.dimension
+
+def arrayExpr (info : BirdDetInfo) :=
+  info.data.arrayExpr
+
+def arrayEntries (info : BirdDetInfo) :=
+  info.data.arrayEntries
+
+end BirdDetInfo
+
+/-- Recognise a `birdDet` call and reify the matrix argument into `BirdDetInfo`. -/
 def reifyBirdDet (e : Expr) : MetaM BirdDetInfo := do
   let e ← instantiateMVars e
-  let_expr birdDet ringType birdRingInst dimensionExpr arrayExpr := e
+  let ⟨_, α, _⟩ ← inferTypeQ' e
+  let_expr birdDet _ birdRingInst dimensionExpr arrayExpr := e
     | throwError "expected an application of `birdDet, got {e}"
-  let .const _ [level] := e.getAppFn
-    | throwError "expected `birdDet` to have exactly one universe level"
+  let some rα ← checkTypeQ birdRingInst q(CommRing $α)
+    | throwError "expected `birdDet` ring instance to have type{indentExpr q(CommRing $α)}"
   let dimensionExpr ← whnf dimensionExpr
-  let some dimension := dimensionExpr.rawNatLit?
-    | throwError "expected the dimension to be a `Nat` literal, got {dimensionExpr}"
+  let some dimensionLit ← checkTypeQ dimensionExpr q(Nat)
+    | throwError "expected the dimension to have type `Nat`, got {dimensionExpr}"
+  let some dimension ← getNatValue? dimensionLit
+    | throwError "expected the dimension to be a `Nat` literal, got {dimensionLit}"
+  let some arrayExpr ← checkTypeQ arrayExpr q(Array $α)
+    | throwError "expected the array to have type{indentExpr q(Array $α)}"
   let some arrayEntries ← arrayLiteral? arrayExpr
     | throwError "expected an array literal matrix, got {arrayExpr}"
   unless arrayEntries.size == dimension * dimension do
     throwError "matrix size mismatch: array has {arrayEntries.size} entries, expected {dimension * dimension}"
-  return {level, ringType, birdRingInst, dimension, dimensionExpr, arrayExpr, arrayEntries}
+  let arrayEntries ← arrayEntries.mapM fun entry => do
+    let some entry ← checkTypeQ entry α
+      | throwError "expected array entry to have type{indentExpr α}"
+    return entry
+  return {
+    rα
+    data := {
+      dimension
+      arrayExpr
+      arrayEntries
+    }
+  }
 
 end Meta
 
