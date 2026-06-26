@@ -1,45 +1,14 @@
 module
 
 public import Determinant.CertChain.Bird
-public meta import Mathlib.Tactic.Ring
 public meta import Mathlib.Util.Qq
-public meta import Lean.Meta.LitValues
-public meta import Lean.Meta.Transform
 
 open Lean Meta Qq
-open Mathlib.Tactic.Ring
 open BirdDet
 
 public meta section
 
 namespace Meta
-
-/-- A convenience type representing an equality proof `proof : lhs = rhs`. -/
-structure EqProof {u : Level} (α : Q(Type u)) where
-  {lhs : Q($α)}
-  {rhs : Q($α)}
-  proof : Q($lhs = $rhs)
-
-def EqProof.ofQ {u : Level} {α : Q(Type u)}
-  {lhs rhs : Q($α)} (proof : Q($lhs = $rhs)) : EqProof α := { proof }
-
-/-- Given `h₁ : x = x'` and `h₂ : y = y'`, construct `opP x y = opP x' y'`. -/
-def mkCongrBinop {u : Level} {α : Q(Type u)}
-    (opP : Q($α → $α → $α)) (h₁ h₂ : EqProof α) :
-    MetaM (EqProof α) := do
-  let lhs : Q($α) := q($opP $h₁.lhs $h₂.lhs)
-  let rhs : Q($α) := q($opP $h₁.rhs $h₂.rhs)
-  let proof ← mkCongr (← mkCongrArg opP h₁.proof) h₂.proof
-  return {lhs, rhs, proof}
-
-/-- Given `h : x = x'`, construct `opP x = opP x'`. -/
-def mkCongrUnop {u : Level} {α : Q(Type u)}
-    (opP : Q($α → $α)) (h : EqProof α) :
-    MetaM (EqProof α) := do
-  let lhs : Q($α) := q($opP $h.lhs)
-  let rhs : Q($α) := q($opP $h.rhs)
-  let proof ← mkCongrArg opP h.proof
-  return {lhs, rhs, proof}
 
 /-- Parse an array literal into an array of element expressions. -/
 def arrayLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
@@ -53,6 +22,8 @@ def arrayLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
 structure BirdDetData {u : Level} {α : Q(Type u)} (rα : Q(CommRing $α)) where
   /-- The dimension of the reified matrix -/
   dimension : Nat
+  /-- The quoted dimension expression from the reified determinant call. -/
+  dimensionExpr : Q(Nat)
   /-- The array of matrix entries as an Expr -/
   arrayExpr : Q(Array $α)
   /-- An array of matrix entry `Expr`s` -/
@@ -107,6 +78,7 @@ def reifyBirdDet (e : Expr) : MetaM BirdDetInfo := do
     rα
     data := {
       dimension
+      dimensionExpr := dimensionLit
       arrayExpr
       arrayEntries
     }
