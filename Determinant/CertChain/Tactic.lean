@@ -16,7 +16,7 @@ def normalizeBirdDet (e : Expr) : MetaM Simp.Result := do
 /--
 Normalize a literal `birdDet` call using the certificate-chain evaluator.
 -/
-simproc cert_bird_det (BirdDet.birdDet _ _) := fun e => do
+simproc_decl cert_bird_det (BirdDet.birdDet _ _) := fun e => do
   return .done (← normalizeBirdDet e)
 
 /-- Normalize `birdDet` calls in the target using the certificate-chain simproc. -/
