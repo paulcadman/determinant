@@ -16,10 +16,10 @@ def normalizeBirdDet (e : Expr) : MetaM Simp.Result := do
 /--
 Normalize a literal `birdDet` call using the certificate-chain evaluator.
 -/
-simproc ↓ cert_bird_det (BirdDet.birdDet _ _) := fun e => do
+simproc cert_bird_det (BirdDet.birdDet _ _) := fun e => do
   return .done (← normalizeBirdDet e)
 
 /-- Normalize `birdDet` calls in the target using the certificate-chain simproc. -/
-macro "eval_bird_det" : tactic => `(tactic| simp only [↓cert_bird_det])
+macro "eval_bird_det" : tactic => `(tactic| simp only [cert_bird_det])
 
 end
