@@ -14,12 +14,12 @@ def normalizeBirdDet (e : Expr) : MetaM Simp.Result := do
   Mathlib.Tactic.RingNF.cleanup {} {expr := detNorm.norm, proof? := some detNorm.proof}
 
 /--
-Normalize a literal `birdDet` call using the certificate-chain evaluator.
+Normalize a literal `birdDet` call using the certificacert_bird_dette-chain evaluator.
 -/
-simproc_decl cert_bird_det (BirdDet.birdDet _ _) := fun e => do
+simproc_decl norm_det (BirdDet.birdDet _ _) := fun e => do
   return .done (← normalizeBirdDet e)
 
 /-- Normalize `birdDet` calls in the target using the certificate-chain simproc. -/
-macro "eval_bird_det" : tactic => `(tactic| simp only [cert_bird_det])
+macro "eval_det" : tactic => `(tactic| simp only [norm_det])
 
 end
