@@ -59,14 +59,22 @@ run_meta do
 -- Rebuilding Bird terms with the ring-computation instance can lose
 -- definitional equality with the original goal.
 run_meta do
-  let e : Q(ℤ) := q(@birdDet ℤ wrappedIntCommRing 1 #[1])
+  let e0 : Q(ℤ) :=
+    q(letI : CommRing ℤ := wrappedIntCommRing; birdDet 1 (#[1] : Array ℤ))
+  let e ← zetaReduce e0
   let info ← reifyBirdDet e
   let cα ← Common.mkCache q(Int.instCommSemiring)
   let some rα := cα.rα | unreachable!
-  let withBirdInst := mkAppN (mkConst ``birdDet [.zero])
-    #[info.α, info.rα, mkNatLit info.dimension, info.arrayExpr]
-  let withRingInst := mkAppN (mkConst ``birdDet [.zero])
-    #[info.α, rα, mkNatLit info.dimension, info.arrayExpr]
+  let some birdInst ← checkTypeQ info.rα q(CommRing ℤ) | unreachable!
+  let some ringInst ← checkTypeQ rα q(CommRing ℤ) | unreachable!
+  let n := info.data.dimensionExpr
+  let some A ← checkTypeQ info.data.arrayExpr q(Array ℤ) | unreachable!
+  let withBirdInst0 : Q(ℤ) :=
+    q(letI : CommRing ℤ := $birdInst; birdDet $n $A)
+  let withRingInst0 : Q(ℤ) :=
+    q(letI : CommRing ℤ := $ringInst; birdDet $n $A)
+  let withBirdInst ← zetaReduce withBirdInst0
+  let withRingInst ← zetaReduce withRingInst0
   assertDefEq withBirdInst e
   if ← isDefEq withRingInst e then
     throwError "expected ring-cache instance not to be definitionally equal to the Bird instance"
@@ -131,6 +139,7 @@ meta def ctxℤ
   let rc := ringCompute cα
   let info : BirdDetData q(Int.instCommRing) := {
     dimension
+    dimensionExpr := mkNatLitQ dimension
     arrayExpr := array
     arrayEntries
   }
