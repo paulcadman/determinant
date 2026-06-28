@@ -3,14 +3,40 @@ module
 public import Determinant.CertChain.Tactic
 import Mathlib.RingTheory.Polynomial.Basic
 import Mathlib.Tactic.Field
+import Qq
 
 namespace Tests.Tactic
 
+open Lean Meta Qq
 open BirdDet
 
 variable
   {R : Type*}
   [CommRing R]
+
+-- Source recognizer: direct `BirdDet.birdDet`.
+run_meta do
+  let e : Q(ℤ) := q(BirdDet.birdDet 2 #[1, 2, 3, 4])
+  let some _ ← sourceOfExpr? e | throwError "expected direct Bird determinant source"
+
+-- Source recognizer: checked flat-array `Matrix.det`.
+run_meta do
+  let e : Q(ℤ) :=
+    q(Matrix.det (BirdDet.ofFlatArray (m := 2) (n := 2) #[(1 : ℤ), 2, 3, 4] rfl))
+  let some _ ← sourceOfExpr? e | throwError "expected checked flat-array determinant source"
+
+-- Source recognizer: legacy elaborated `!![...]` matrix literal.
+run_meta do
+  let e : Q(ℤ) := q((Matrix.det !![(1 : ℤ), 2; 3, 4] : ℤ))
+  let some _ ← sourceOfExpr? e | throwError "expected matrix literal determinant source"
+
+-- Unsupported arbitrary `Matrix.det` expressions are ignored by the simproc dispatcher.
+run_meta do
+  let M : Q(Matrix (Fin 2) (Fin 2) ℤ) := q(fun _ _ => (0 : ℤ))
+  let e : Q(ℤ) := q(Matrix.det $M)
+  match ← sourceOfExpr? e with
+  | none => pure ()
+  | some _ => throwError "unexpected determinant source"
 
 example : birdDet 0 (#[] : Array ℤ) = 1 := by
   eval_det
