@@ -43,27 +43,34 @@ def normalizeBirdDet (e : Expr) : MetaM Simp.Result := do
 
 def normalizeDetOfFlatArray (e : Expr) : MetaM Simp.Result := do
   let e ← instantiateMVars e
-  let ⟨u, α, _⟩ ← inferTypeQ' e
+  let ⟨u, α, e⟩ ← inferTypeQ' e
   let_expr Matrix.det _ _ _ _ detRingInst matrix := e
     | throwError "expected `Matrix.det`, got{indentExpr e}"
   let some detRingInst ← checkTypeQ detRingInst q(CommRing $α)
     | throwError "expected determinant ring instance to have type{indentExpr q(CommRing $α)}"
   let_expr BirdDet.ofFlatArray _ dimensionExpr columnCountExpr arrayExpr sizeProof := matrix
     | throwError "expected determinant of `BirdDet.ofFlatArray`, got{indentExpr matrix}"
+  let some dimensionExpr ← checkTypeQ dimensionExpr q(Nat)
+    | throwError "expected row dimension to have type `Nat`, got{indentExpr dimensionExpr}"
+  let some columnCountExpr ← checkTypeQ columnCountExpr q(Nat)
+    | throwError "expected column dimension to have type `Nat`, got{indentExpr columnCountExpr}"
   unless ← isDefEq dimensionExpr columnCountExpr do
     throwError
       "expected square `BirdDet.ofFlatArray`, got dimensions{indentExpr dimensionExpr}{indentExpr columnCountExpr}"
-  let some dimensionExpr ← checkTypeQ dimensionExpr q(Nat)
-    | throwError "expected row dimension to have type `Nat`, got{indentExpr dimensionExpr}"
   let some arrayExpr ← checkTypeQ arrayExpr q(Array $α)
     | throwError "expected flat array to have type{indentExpr q(Array $α)}"
-  let birdExpr : Q($α) :=
-    mkAppN (mkConst ``BirdDet.birdDet [u]) #[
-      α, detRingInst, dimensionExpr, arrayExpr]
-  let bridge ← mkExpectedTypeHint
-    (mkAppN (mkConst ``BirdDet.det_ofFlatArray_eq_birdDet [u]) #[
-      α, detRingInst, dimensionExpr, arrayExpr, sizeProof])
-    (← mkEq e birdExpr)
+  let some sizeProof ← withDefault <|
+      checkTypeQ sizeProof q(Array.size $arrayExpr = $dimensionExpr * $dimensionExpr)
+    | throwError
+        "expected flat-array size proof to have type{indentExpr q(Array.size $arrayExpr = $dimensionExpr * $dimensionExpr)}"
+  let birdExpr : Q($α) := q(@BirdDet.birdDet $α $detRingInst $dimensionExpr $arrayExpr)
+  let matrixDet : Q($α) :=
+    q(Matrix.det (BirdDet.ofFlatArray (n := $dimensionExpr) (m := $dimensionExpr)
+      $arrayExpr $sizeProof))
+  let bridge' : Q($matrixDet = $birdExpr) :=
+    q(@BirdDet.det_ofFlatArray_eq_birdDet $α $detRingInst $dimensionExpr $arrayExpr $sizeProof)
+  let bridge : Q($e = $birdExpr) :=
+    bridge'
   let birdNorm ← normalizeBirdDet birdExpr
   ({expr := birdExpr, proof? := some bridge} : Simp.Result).mkEqTrans birdNorm
 
