@@ -25,10 +25,10 @@ run_meta do
     q(Matrix.det (BirdDet.ofFlatArray (m := 2) (n := 2) #[(1 : ℤ), 2, 3, 4] rfl))
   let some _ ← sourceOfExpr? e | throwError "expected checked flat-array determinant source"
 
--- Source recognizer: legacy elaborated `!![...]` matrix literal.
+-- Source recognizer: elaborated Mathlib matrix notation.
 run_meta do
   let e : Q(ℤ) := q((Matrix.det !![(1 : ℤ), 2; 3, 4] : ℤ))
-  let some _ ← sourceOfExpr? e | throwError "expected matrix literal determinant source"
+  let some _ ← sourceOfExpr? e | throwError "expected matrix notation determinant source"
 
 -- Unsupported arbitrary `Matrix.det` expressions are ignored by the simproc dispatcher.
 run_meta do
@@ -57,9 +57,17 @@ example :
       (-2 : ℤ) := by
   eval_det
 
-example :
+lemma test_matrix_notation_source_2x2 :
     (Matrix.det !![1, 2; 3, 4] : ℤ) =
       (-2 : ℤ) := by
+  eval_det
+
+lemma test_matrix_notation_source_3x3 :
+    (Matrix.det
+      !![1, 2, 3;
+         0, 4, 5;
+         0, 0, 6] : ℤ) =
+      24 := by
   eval_det
 
 example (A : Array R) (hA : A.size = 2 * 2) :
@@ -140,7 +148,7 @@ lemma test_case_8 :
 
 lemma test_case_8_det :
   -- These tests use the checked flat-array constructor to avoid Mathlib's
-  -- vector-based matrix literal elaboration while still proving a theorem about
+  -- vector-based matrix notation elaboration while still proving a theorem about
   -- `Matrix.det`.
   Matrix.det (BirdDet.ofFlatArray (m := 8) (n := 8)
     #[ 2,  0, -1,  0,  0,  0,  0,  0,

@@ -4,16 +4,19 @@ public import Determinant.CertChain.Source
 public import Mathlib.LinearAlgebra.Matrix.Notation
 
 /-!
-# Legacy elaborated matrix literal support
+# Matrix notation determinant sources
 
-This module provides compatibility support for already-elaborated Mathlib
-`!![...]` matrix literals under `Matrix.det`.
+This module supports already-elaborated Mathlib matrix notation under
+`Matrix.det`.
 
-This is not the preferred fast frontend path. The recognizer extracts entries
-from elaborated `Matrix.of` / `Matrix.vecCons` / `Matrix.vecEmpty` terms,
-constructs a checked flat array, and builds a `Matrix.ext` proof by
-case-splitting both `Fin` indices. The resulting source is then normalized by
-the common `DetSource` pipeline.
+The expression produced by `!![...]` elaborates to nested `Matrix.vecCons`
+terms. This module extracts those entries, builds a checked flat-array matrix,
+and proves equality to the original matrix by `Matrix.ext` and `Fin` case
+splitting.
+
+This is a fully supported source form for the tactic. It is separated from the
+checked `ofFlatArray` source because the elaborated syntax has a different
+internal representation.
 -/
 
 open Lean Meta
@@ -21,7 +24,9 @@ open Qq
 
 public meta section
 
-namespace LegacyMatrixLiteral
+namespace MatrixNotationSource
+
+/-! ## Parsing elaborated matrix notation -/
 
 /--
 Recognize a vector literal after elaboration.
@@ -30,7 +35,7 @@ Mathlib's `![...]`/`!![...]` notation elaborates rows and the outer row vector a
 nested `Matrix.vecCons ... Matrix.vecEmpty` terms. This returns the elements in
 left-to-right order when `e` has exactly that elaborated shape.
 -/
-partial def matrixVecLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
+partial def vecConsLiteralElems? (e : Expr) : MetaM (Option (Array Expr)) := do
   let e ← instantiateMVars e
   let args := e.getAppArgs
   if e.getAppFn.isConstOf ``Matrix.vecEmpty then
@@ -38,7 +43,7 @@ partial def matrixVecLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
   else if e.getAppFn.isConstOf ``Matrix.vecCons then
     unless args.size == 4 do
       return none
-    let some tail ← matrixVecLiteral? args[3]!
+    let some tail ← vecConsLiteralElems? args[3]!
       | return none
     return #[args[2]!] ++ tail
   else
@@ -47,17 +52,19 @@ partial def matrixVecLiteral? (e : Expr) : MetaM (Option (Array Expr)) := do
 /--
 Recognize the outer `Matrix.of` wrapper used by elaborated `!![...]` notation.
 
-For a matrix literal, the matrix argument seen by the determinant simproc is a
+For matrix notation, the matrix argument seen by the determinant simproc is a
 function-like coercion of `Matrix.of` applied to the vector of row functions.
 When that exact shape is present, this returns the row-vector expression.
 -/
-def matrixOfRows? (matrix : Expr) : Option Expr := Id.run do
+def matrixOfRowsExpr? (matrix : Expr) : Option Expr := Id.run do
   let args := matrix.getAppArgs
   if matrix.getAppFn.isConstOf ``DFunLike.coe && args.size == 6 &&
       args[4]!.getAppFn.isConstOf ``Matrix.of then
     some args[5]!
   else
     none
+
+/-! ## Constructing flat arrays -/
 
 /-- Build a `List` expression from already-elaborated element expressions. -/
 def mkListExpr (u : Level) (α : Expr) (xs : Array Expr) : Expr :=
@@ -67,6 +74,8 @@ def mkListExpr (u : Level) (α : Expr) (xs : Array Expr) : Expr :=
 /-- Build an `Array` expression from already-elaborated element expressions. -/
 def mkArrayExpr (u : Level) (α : Expr) (xs : Array Expr) : Expr :=
   mkAppN (mkConst ``Array.mk [u]) #[α, mkListExpr u α xs]
+
+/-! ## Fin case-splitting proof utilities -/
 
 /-- Construct the expression `Fin n`. -/
 def mkFinType (n : Nat) : Expr :=
@@ -118,6 +127,8 @@ def mkForallFinCasesProof (n : Nat)
     let body ← mkFinCasesProof n 0 i targetFor proofFor
     mkLambdaFVars #[i] body
 
+/-! ## Matrix equality proof -/
+
 /--
 Prove that an elaborated `!![...]` matrix equals the corresponding
 `BirdDet.ofFlatArray` matrix.
@@ -127,7 +138,7 @@ proof, which is slow for larger literals. Instead it builds a `Matrix.ext` proof
 and splits both `Fin n` indices into concrete cases; each cell equality is then
 checked by `rfl`.
 -/
-def mkMatrixLiteralEqProof (dimension : Nat) (indexType α matrix ofFlatMatrix : Expr) :
+def mkMatrixNotationEqOfFlatArray (dimension : Nat) (indexType α matrix ofFlatMatrix : Expr) :
     MetaM Expr := do
   let cellTarget (i j : Expr) : MetaM Expr :=
     mkEq (mkApp2 matrix i j) (mkApp2 ofFlatMatrix i j)
@@ -144,18 +155,20 @@ def mkMatrixLiteralEqProof (dimension : Nat) (indexType α matrix ofFlatMatrix :
     some matrix, some ofFlatMatrix, some rowProof]
   mkExpectedTypeHint proof (← mkEq matrix ofFlatMatrix)
 
+/-! ## Reifying matrix notation as a determinant source -/
+
 /--
-Recognize an already-elaborated `Matrix.det !![...]` literal as a determinant
+Recognize already-elaborated `Matrix.det !![...]` notation as a determinant
 source.
 -/
-def sourceOfMatrixLiteral? (e : Expr) : MetaM (Option DetSource) := do
+def sourceOfMatrixNotation? (e : Expr) : MetaM (Option DetSource) := do
   let e ← instantiateMVars e
   unless e.getAppFn.isConstOf ``Matrix.det do
     return none
   let ⟨u, α, e⟩ ← inferTypeQ' e
   let_expr Matrix.det indexType _ _ _ detRingInst matrix := e
     | return none
-  let some rowsExpr := matrixOfRows? matrix
+  let some rowsExpr := matrixOfRowsExpr? matrix
     | return none
   let some detRingInst ← checkTypeQ detRingInst q(CommRing $α)
     | throwError "expected determinant ring instance to have type{indentExpr q(CommRing $α)}"
@@ -166,13 +179,13 @@ def sourceOfMatrixLiteral? (e : Expr) : MetaM (Option DetSource) := do
     | throwError "expected determinant dimension to have type `Nat`, got{indentExpr dimensionExpr}"
   let some dimension ← getNatValue? dimensionExpr
     | throwError "expected determinant dimension to be a `Nat` literal, got{indentExpr dimensionExpr}"
-  let some rowExprs ← matrixVecLiteral? rowsExpr
+  let some rowExprs ← vecConsLiteralElems? rowsExpr
     | throwError "expected matrix rows to be a `Matrix.vecCons` literal, got{indentExpr rowsExpr}"
   unless rowExprs.size == dimension do
     throwError "matrix row count mismatch: literal has {rowExprs.size} rows, determinant has {dimension}"
   let mut entries : Array Q($α) := #[]
   for rowExpr in rowExprs do
-    let some rowEntries ← matrixVecLiteral? rowExpr
+    let some rowEntries ← vecConsLiteralElems? rowExpr
       | throwError "expected matrix row to be a `Matrix.vecCons` literal, got{indentExpr rowExpr}"
     unless rowEntries.size == dimension do
       throwError "matrix column count mismatch: row has {rowEntries.size} entries, expected {dimension}"
@@ -195,23 +208,11 @@ def sourceOfMatrixLiteral? (e : Expr) : MetaM (Option DetSource) := do
   let matrixForProof ← mkExpectedTypeHint matrix matrixType
   let ofFlatMatrixForProof ← mkExpectedTypeHint ofFlatMatrix matrixType
   let matrixEqProof ←
-    mkMatrixLiteralEqProof dimension indexType α matrixForProof ofFlatMatrixForProof
-  let birdExpr : Q($α) := q(@BirdDet.birdDet $α $detRingInst $dimensionExpr $arrayExpr)
-  let detFn := e.appFn!
-  let detCongr ← mkCongrArg detFn matrixEqProof
-  let flatBridge ← mkExpectedTypeHint
-    (← mkAppOptM ``BirdDet.det_ofFlatArray_eq_birdDet_square
-      #[some α, some detRingInst, some dimensionExpr, some arrayExpr, some sizeProof])
-    (← mkEq (mkApp detFn ofFlatMatrixForProof) birdExpr)
-  let bridge ← mkExpectedTypeHint (← mkEqTrans detCongr flatBridge) (← mkEq e birdExpr)
-  let info ← Meta.reifyBirdDet birdExpr
-  return some {
-    original := e
-    bird := birdExpr
-    bridge? := some bridge
-    info
-  }
+    mkMatrixNotationEqOfFlatArray dimension indexType α matrixForProof ofFlatMatrixForProof
+  let src ← sourceFromFlatArrayDetInput e e.appFn! ofFlatMatrixForProof detRingInst
+    dimensionExpr arrayExpr sizeProof (some matrixEqProof)
+  return some src
 
-end LegacyMatrixLiteral
+end MatrixNotationSource
 
 end

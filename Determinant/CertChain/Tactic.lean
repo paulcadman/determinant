@@ -1,6 +1,6 @@
 module
 
-public import Determinant.CertChain.LegacyMatrixLiteral
+public import Determinant.CertChain.MatrixNotationSource
 
 /-!
 # Tactic frontend for the certificate-chain determinant evaluator
@@ -16,11 +16,12 @@ Supported sources are:
 
 * `BirdDet.birdDet n A`;
 * `Matrix.det (BirdDet.ofFlatArray (m := n) (n := n) A hA)`;
-* legacy already-elaborated `Matrix.det !![...]` literals.
+* elaborated Mathlib matrix notation `Matrix.det !![...]`.
 
-The legacy `!![...]` path is a compatibility fallback, not the preferred fast
-frontend. Its parser and `Matrix.ext` proof construction are isolated in
-`Determinant.CertChain.LegacyMatrixLiteral`.
+The matrix notation branch is a fully supported source form. Its parser and
+`Matrix.ext` proof construction are isolated in
+`Determinant.CertChain.MatrixNotationSource` because `!![...]` elaborates to
+Mathlib's vector-based matrix representation.
 -/
 
 open Lean Meta Elab Tactic Simp
@@ -33,7 +34,9 @@ def sourceOfExpr? (e : Expr) : MetaM (Option DetSource) := do
     return some src
   if let some src ← sourceOfDetOfFlatArray? e then
     return some src
-  if let some src ← LegacyMatrixLiteral.sourceOfMatrixLiteral? e then
+  -- Matrix notation is fully supported. It is checked after `ofFlatArray`
+  -- because checked flat arrays are already in the desired internal form.
+  if let some src ← MatrixNotationSource.sourceOfMatrixNotation? e then
     return some src
   return none
 
@@ -44,7 +47,7 @@ def sourceOfExpr! (e : Expr) : MetaM DetSource := do
   | none =>
       throwError
         "expected `BirdDet.birdDet ...`, `Matrix.det (BirdDet.ofFlatArray ...)`, \
-        or a supported matrix literal; got{indentExpr e}"
+        or supported matrix notation; got{indentExpr e}"
 
 /-- Normalize a supported determinant expression, if this frontend recognizes it. -/
 def normalizeDetExpr? (e : Expr) : MetaM (Option Simp.Result) := do

@@ -18,8 +18,8 @@ Supported sources in this module are:
 * direct `BirdDet.birdDet n A`;
 * `Matrix.det (BirdDet.ofFlatArray (m := n) (n := n) A hA)`.
 
-Legacy elaborated `Matrix.det !![...]` support lives in
-`Determinant.CertChain.LegacyMatrixLiteral`.
+Elaborated Mathlib matrix notation support for `Matrix.det !![...]` lives in
+`Determinant.CertChain.MatrixNotationSource`.
 -/
 
 open Lean Meta Simp
@@ -63,6 +63,44 @@ def normalize (src : DetSource) : MetaM Simp.Result := do
       ({expr := src.bird, proof? := some h} : Simp.Result).mkEqTrans birdNorm
 
 end DetSource
+
+/--
+Construct a determinant source from a checked flat-array matrix under
+`Matrix.det`.
+
+When `matrixEq?` is present, it proves that the original matrix expression is
+equal to the checked flat-array matrix. This is used by the matrix notation
+source, whose elaborated matrix has Mathlib's vector-based representation.
+-/
+def sourceFromFlatArrayDetInput
+    {u : Level} {α : Q(Type u)}
+    (original detFn flatMatrix : Expr)
+    (ringInst : Q(CommRing $α))
+    (n : Q(Nat))
+    (array : Q(Array $α))
+    (sizeProof : Q(Array.size $array = $n * $n))
+    (matrixEq? : Option Expr) :
+    MetaM DetSource := do
+  let birdExpr : Q($α) := q(@BirdDet.birdDet $α $ringInst $n $array)
+  let flatDetExpr := mkApp detFn flatMatrix
+  let flatBridge ← mkExpectedTypeHint
+    (← mkAppOptM ``BirdDet.det_ofFlatArray_eq_birdDet_square
+      #[some α, some ringInst, some n, some array, some sizeProof])
+    (← mkEq flatDetExpr birdExpr)
+  let bridge ←
+    match matrixEq? with
+    | none => pure flatBridge
+    | some matrixEq => do
+        let detCongr ← mkCongrArg detFn matrixEq
+        mkExpectedTypeHint (← mkEqTrans detCongr flatBridge) (← mkEq original birdExpr)
+  let bridge ← mkExpectedTypeHint bridge (← mkEq original birdExpr)
+  let info ← Meta.reifyBirdDet birdExpr
+  return {
+    original
+    bird := birdExpr
+    bridge? := some bridge
+    info
+  }
 
 /-- Recognize a direct `BirdDet.birdDet` expression as a determinant source. -/
 def sourceOfBirdDet? (e : Expr) : MetaM (Option DetSource) := do
@@ -108,17 +146,8 @@ def sourceOfDetOfFlatArray? (e : Expr) : MetaM (Option DetSource) := do
         | throwError "expected flat array to have type{indentExpr q(Array $α)}"
       let expectedSizeType : Q(Prop) := q(Array.size $arrayExpr = $rowsExpr * $rowsExpr)
       let sizeProof ← mkExpectedTypeHint sizeProof expectedSizeType
-      let birdExpr : Q($α) := q(@BirdDet.birdDet $α $detRingInst $rowsExpr $arrayExpr)
-      let bridge ← mkAppOptM ``BirdDet.det_ofFlatArray_eq_birdDet_square
-        #[some α, some detRingInst, some rowsExpr, some arrayExpr, some sizeProof]
-      let bridge ← mkExpectedTypeHint bridge (← mkEq e birdExpr)
-      let info ← Meta.reifyBirdDet birdExpr
-      return some {
-        original := e
-        bird := birdExpr
-        bridge? := some bridge
-        info
-      }
+      let src ← sourceFromFlatArrayDetInput e e.appFn! matrix detRingInst rowsExpr arrayExpr sizeProof none
+      return some src
   | _ =>
       throwError "expected determinant of square `BirdDet.ofFlatArray`, got{indentExpr matrix}"
 
