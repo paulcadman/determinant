@@ -45,15 +45,15 @@ run_meta do
   assertLevelDefEq info.u .zero
   assertDefEq info.α q(ℤ)
   assertDefEq info.rα q(Int.instCommRing)
-  unless info.dimension == 2 do
-    throwError m!"expected dimension 2, got {info.dimension}"
-  assertDefEq info.arrayExpr q(#[1, 2, 3, 4] : Array ℤ)
-  unless info.arrayEntries.size == 4 do
-    throwError m!"expected 4 array entries, got {info.arrayEntries.size}"
-  assertDefEq info.arrayEntries[0]! q((1 : ℤ))
-  assertDefEq info.arrayEntries[1]! q((2 : ℤ))
-  assertDefEq info.arrayEntries[2]! q((3 : ℤ))
-  assertDefEq info.arrayEntries[3]! q((4 : ℤ))
+  unless info.data.dimension == 2 do
+    throwError m!"expected dimension 2, got {info.data.dimension}"
+  assertDefEq info.data.arrayExpr q(#[1, 2, 3, 4] : Array ℤ)
+  unless info.data.arrayEntries.size == 4 do
+    throwError m!"expected 4 array entries, got {info.data.arrayEntries.size}"
+  assertDefEq info.data.arrayEntries[0]! q((1 : ℤ))
+  assertDefEq info.data.arrayEntries[1]! q((2 : ℤ))
+  assertDefEq info.data.arrayEntries[2]! q((3 : ℤ))
+  assertDefEq info.data.arrayEntries[3]! q((4 : ℤ))
 
 -- The Bird-side instance has to be the exact instance from the reified term.
 -- Rebuilding Bird terms with the ring-computation instance can lose

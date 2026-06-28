@@ -3,6 +3,21 @@ module
 public import Determinant.CertChain.Bird
 public meta import Mathlib.Util.Qq
 
+/-!
+# Reification support for the certificate-chain evaluator
+
+This module contains the meta-level parser used by the certificate-chain
+frontend. It recognizes applications of `BirdDet.birdDet` whose matrix argument
+is a literal flat array, checks that the array has exactly `n * n` entries, and
+packages the result as typed Qq data.
+
+The later certificate construction code relies on these checks: it receives the
+exact `CommRing` instance from the original determinant expression, a typed
+dimension expression, the typed array expression, and the typed literal entries.
+This keeps the lower-level certifier focused on proof construction rather than
+on expression validation.
+-/
+
 open Lean Meta Qq
 open BirdDet
 
@@ -37,19 +52,6 @@ structure BirdDetInfo where
   rα : Q(CommRing $α)
   /-- The typed matrix data parsed from the determinant expression. -/
   data : BirdDetData rα
-
-namespace BirdDetInfo
-
-def dimension (info : BirdDetInfo) : Nat :=
-  info.data.dimension
-
-def arrayExpr (info : BirdDetInfo) :=
-  info.data.arrayExpr
-
-def arrayEntries (info : BirdDetInfo) :=
-  info.data.arrayEntries
-
-end BirdDetInfo
 
 /-- Recognise a `birdDet` call and reify the matrix argument into `BirdDetInfo`. -/
 def reifyBirdDet (e : Expr) : MetaM BirdDetInfo := do

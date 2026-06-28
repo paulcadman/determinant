@@ -315,14 +315,15 @@ normalizes their sum.
 
 ```
 iter n A (t' + 1) F_0 i j
-  = -S * A[i,j] + T       -- iter_succ
-  = dNorm + tNorm         -- congruence
-  = norm                  -- Ring.evalAdd
+  = -(sumFrom n (i + 1) fun k => F_t k k) * get n A i j
+      + sumFrom n (i + 1) fun k => F_t i k * get n A k j
+                                      -- BirdDet.iter_succ
+  = norm                              -- certAdd diagProdCert tailSumCert
 ```
 
-Where `S = ∑_{k>i} F_t k k` and `T = ∑_{k>i} F_t i k * A[k,j]`
-
-If A[i,j] is certified 0 then S is not required.
+The first summand is certified by `certDiag`, `certNeg`, `certEntry`, and
+`certMul`. If `get n A i j` certifies to zero, `zeroProdCert` skips the
+diagonal sum entirely. The second summand is certified by `certTail`.
 
 -/
 partial def certIter (t i j : Nat) : CertM rα (Cert rα) := do
@@ -340,8 +341,9 @@ partial def certIter (t i j : Nat) : CertM rα (Cert rα) := do
     | t' + 1 => do
       -- First summand in `BirdDet.iter_succ`:
       --   -(sumFrom n (i + 1) fun k => F_t k k) * get n A i j
+      let diagSummand := q(fun k => $(ctx.iterP t') k k)
       let negDiagSum :=
-        q(-$(ctx.sumFrom (i + 1) q(fun k => $(ctx.iterP t') k k)))
+        q(-$(ctx.sumFrom (i + 1) diagSummand))
       let entryCert ← certEntry i j
       let diagProdCert ←
         if entryCert.isZero then
@@ -373,12 +375,16 @@ sumFrom n lo (fun k => iter n A t (get n A) k k)
 It certifies that:
 
 ```
-sumFrom n lo diagFun
-  = diagFun lo + sumFrom n (lo + 1) diagFun   -- sumFrom_step (lo < n)
-  = headNorm + tailNorm                       -- congruence
-  = norm                                      -- Ring.evalAdd
+sumFrom n lo diagFun =
+  if lo < n then
+    diagFun lo + sumFrom n (lo + 1) diagFun   -- BirdDet.sumFrom_step
+  else
+    0                                         -- BirdDet.sumFrom_stop
 ```
 
+In the step branch, `diagFun lo` is certified by `certIter t lo lo`, the
+remaining tail is certified recursively by `certDiag t (lo + 1)`, and
+`certSumFromStep` combines those certificates with `certAdd`.
 -/
 partial def certDiag (t lo : Nat) : CertM rα (Cert rα) := do
   if let some c := (← get).diagCache[(t, lo)]? then
@@ -413,23 +419,23 @@ sumFrom n lo (fun k => iter n A t (get n A) i k * get n A k j)
 It certifies that:
 
 ```
-sumFrom n lo f
-  = f lo + sumFrom n (lo + 1) f   -- sumFrom_step (lo < n)
-  = prodNorm + tailNorm           -- congruence
-  = norm                          -- Ring.evalAdd
+sumFrom n lo f =
+  if lo < n then
+    f lo + sumFrom n (lo + 1) f   -- BirdDet.sumFrom_step
+  else
+    0                             -- BirdDet.sumFrom_stop
 ```
 
 In the step branch, `f lo` reduces to `F_t i lo * get n A lo j`, so the head
 term can be certified by `certIter`, `certEntry`, and `certMul`:
 
 ```
-F_t i lo * get n A lo j
-  = iterNorm * gNorm  -- congruence
-  = prodNorm          -- Ring.evalMul
+F_t i lo * get n A lo j = norm
 ```
 
-If `get n A lo j` certifies to zero, `zeroProdCert` avoids certifying
-`F_t i lo`.
+If `get n A lo j` certifies to zero, `zeroProdCert` avoids certifying `F_t i lo`.
+The remaining tail is certified recursively by `certTail t i j (lo + 1)`, and
+`certSumFromStep` combines the head and tail certificates with `certAdd`.
 
 -/
 partial def certTail (t i j lo : Nat) : CertM rα (Cert rα) := do
