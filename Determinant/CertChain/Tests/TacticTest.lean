@@ -22,14 +22,30 @@ example : birdDet 2 #[1, 2, 3, 4] = (-2 : ℤ) := by
   eval_det
 
 example :
-    Matrix.det (BirdDet.ofFlatArray (n := 2) (m := 2) #[(1 : ℤ), 2, 3, 4] rfl) =
+    Matrix.det (BirdDet.ofFlatArray (m := 2) (n := 2) #[(1 : ℤ), 2, 3, 4] rfl) =
       (-2 : ℤ) := by
   eval_det
 
 example :
-    (BirdDet.ofFlatArray (n := 2) (m := 2) #[(1 : ℤ), 2, 3, 4] rfl).det =
+    (BirdDet.ofFlatArray (m := 2) (n := 2) #[(1 : ℤ), 2, 3, 4] rfl).det =
       (-2 : ℤ) := by
   eval_det
+
+example :
+    (Matrix.det !![1, 2; 3, 4] : ℤ) =
+      (-2 : ℤ) := by
+  eval_det
+
+example (A : Array R) (hA : A.size = 2 * 2) :
+    Matrix.det (BirdDet.ofFlatArray (m := 2) (n := 2) A hA) =
+      Matrix.det (BirdDet.ofFlatArray (m := 2) (n := 2) A hA) := by
+  rfl
+
+/--
+Application type mismatch
+-/
+#guard_msgs (substring := true) in
+#check BirdDet.ofFlatArray (m := 2) (n := 2) #[(1 : ℤ), 2, 3] rfl
 
 example : birdDet 2 #[1, 2, 2, 4] = (0 : ℤ) := by
   simp only [norm_det]
@@ -51,8 +67,32 @@ example (a b c d : R) : birdDet 2 #[a, b, c, d] = a * d - b * c := by
   ring
 
 example (a b c d : R) :
-    Matrix.det (BirdDet.ofFlatArray (n := 2) (m := 2) #[a, b, c, d] rfl) =
+    Matrix.det (BirdDet.ofFlatArray (m := 2) (n := 2) #[a, b, c, d] rfl) =
       a * d - b * c := by
+  eval_det
+  ring
+
+example (a b c d : R) :
+    Matrix.det !![a, b; c, d] =
+      a * d - b * c := by
+  eval_det
+  ring
+
+open Polynomial in
+example :
+    Matrix.det
+      (BirdDet.ofFlatArray (m := 2) (n := 2)
+        #[((X : ℤ[X]) - 1), X,
+          X ^ 2,             1] rfl) =
+      -X ^ 3 + X - 1 := by
+  eval_det
+  ring
+
+open Polynomial in
+example :
+    Matrix.det !![((X : ℤ[X]) - 1), X;
+                  X ^ 2,             1] =
+      -X ^ 3 + X - 1 := by
   eval_det
   ring
 
@@ -73,7 +113,10 @@ lemma test_case_8 :
   simp only [norm_det]
 
 lemma test_case_8_det :
-  Matrix.det (BirdDet.ofFlatArray (n := 8) (m := 8)
+  -- These tests use the checked flat-array constructor to avoid Mathlib's
+  -- vector-based matrix literal elaboration while still proving a theorem about
+  -- `Matrix.det`.
+  Matrix.det (BirdDet.ofFlatArray (m := 8) (n := 8)
     #[ 2,  0, -1,  0,  0,  0,  0,  0,
        0,  2,  0, -1,  0,  0,  0,  0,
       -1,  0,  2, -1,  0,  0,  0,  0,

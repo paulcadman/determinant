@@ -245,8 +245,9 @@ off-diagonal comparison, and summed Laplace expansion.
 `Theorem.lean` specializes the invariant to the final singleton tail and proves
 `birdDetSpec_eq_det`.
 
-`FlatMatrix.lean` defines the checked row-major matrix constructor
-`ofFlatArray`, which accepts rectangular `n` by `m` matrices.
+`FlatMatrix.lean` defines the checked rectangular row-major matrix constructor
+`ofFlatArray`. Determinant goals use the square specialization
+`ofFlatArray (m := n) (n := n) A hA`, where `hA : A.size = n * n`.
 
 `FlatAdapter.lean` connects the flat-array Bird implementation to
 `birdDetSpec` and `Matrix.det`.

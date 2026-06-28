@@ -1,5 +1,6 @@
 module
 
+public import Mathlib.Algebra.BigOperators.Group.Finset.Defs
 public import Mathlib.LinearAlgebra.Matrix.Determinant.Basic
 
 open scoped BigOperators

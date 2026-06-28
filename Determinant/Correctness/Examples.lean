@@ -10,16 +10,22 @@ namespace Correctness
 section FlatMatrixExamples
 
 example :
-    BirdDet.ofFlatArray (n := 2) (m := 3)
-      #[(1 : ℤ), 2, 3, 4, 5, 6] rfl
-      (1 : Fin 2) (2 : Fin 3) = 6 := by
+    (BirdDet.ofFlatArray (m := 2) (n := 3)
+      #[(1 : ℤ), 2, 3, 4, 5, 6] rfl)
+        (1 : Fin 2) (2 : Fin 3) = 6 := by
   rfl
 
 example :
-    BirdDet.ofFlatArray (n := 3) (m := 2)
-      #[(1 : ℤ), 2, 3, 4, 5, 6] rfl
-      (2 : Fin 3) (1 : Fin 2) = 6 := by
+    (BirdDet.ofFlatArray (m := 3) (n := 2)
+      #[(1 : ℤ), 2, 3, 4, 5, 6] rfl)
+        (2 : Fin 3) (1 : Fin 2) = 6 := by
   rfl
+
+/--
+Application type mismatch
+-/
+#guard_msgs (substring := true) in
+#check (BirdDet.ofFlatArray (m := 2) (n := 3) #[(1 : ℤ), 2, 3, 4, 5] rfl)
 
 end FlatMatrixExamples
 
