@@ -14,27 +14,22 @@ variable
   {R : Type*}
   [CommRing R]
 
--- Source recognizer: direct `BirdDet.birdDet`.
+-- Normalizer: direct `BirdDet.birdDet`.
 run_meta do
   let e : Q(ℤ) := q(BirdDet.birdDet 2 #[1, 2, 3, 4])
-  let some _ ← sourceOfExpr? e | throwError "expected direct Bird determinant source"
+  discard <| normalizeBirdDet e
 
--- Source recognizer: checked flat-array `Matrix.det`.
+-- Normalizer: checked flat-array `Matrix.det`.
 run_meta do
   let e : Q(ℤ) :=
-    q(Matrix.det (BirdDet.ofFlatArray (m := 2) (n := 2) #[(1 : ℤ), 2, 3, 4] rfl))
-  let some _ ← sourceOfExpr? e | throwError "expected checked flat-array determinant source"
-
--- Source recognizer: elaborated Mathlib matrix notation.
-run_meta do
-  let e : Q(ℤ) := q((Matrix.det !![(1 : ℤ), 2; 3, 4] : ℤ))
-  let some _ ← sourceOfExpr? e | throwError "expected matrix notation determinant source"
+    q(Matrix.det (Matrix.ofFlatArray (m := 2) (n := 2) #[(1 : ℤ), 2, 3, 4] rfl))
+  let some _ ← normalizeDetOfFlatArray? e | throwError "expected checked flat-array determinant source"
 
 -- Unsupported arbitrary `Matrix.det` expressions are ignored by the simproc dispatcher.
 run_meta do
   let M : Q(Matrix (Fin 2) (Fin 2) ℤ) := q(fun _ _ => (0 : ℤ))
   let e : Q(ℤ) := q(Matrix.det $M)
-  match ← sourceOfExpr? e with
+  match ← normalizeDetOfFlatArray? e with
   | none => pure ()
   | some _ => throwError "unexpected determinant source"
 
@@ -48,38 +43,25 @@ example : birdDet 2 #[1, 2, 3, 4] = (-2 : ℤ) := by
   eval_det
 
 example :
-    Matrix.det (BirdDet.ofFlatArray (m := 2) (n := 2) #[(1 : ℤ), 2, 3, 4] rfl) =
+    Matrix.det (Matrix.ofFlatArray (m := 2) (n := 2) #[(1 : ℤ), 2, 3, 4] rfl) =
       (-2 : ℤ) := by
   eval_det
 
 example :
-    (BirdDet.ofFlatArray (m := 2) (n := 2) #[(1 : ℤ), 2, 3, 4] rfl).det =
+    (Matrix.ofFlatArray (m := 2) (n := 2) #[(1 : ℤ), 2, 3, 4] rfl).det =
       (-2 : ℤ) := by
-  eval_det
-
-lemma test_matrix_notation_source_2x2 :
-    (Matrix.det !![1, 2; 3, 4] : ℤ) =
-      (-2 : ℤ) := by
-  eval_det
-
-lemma test_matrix_notation_source_3x3 :
-    (Matrix.det
-      !![1, 2, 3;
-         0, 4, 5;
-         0, 0, 6] : ℤ) =
-      24 := by
   eval_det
 
 example (A : Array R) (hA : A.size = 2 * 2) :
-    Matrix.det (BirdDet.ofFlatArray (m := 2) (n := 2) A hA) =
-      Matrix.det (BirdDet.ofFlatArray (m := 2) (n := 2) A hA) := by
+    Matrix.det (Matrix.ofFlatArray (m := 2) (n := 2) A hA) =
+      Matrix.det (Matrix.ofFlatArray (m := 2) (n := 2) A hA) := by
   rfl
 
 /--
 Application type mismatch
 -/
 #guard_msgs (substring := true) in
-#check BirdDet.ofFlatArray (m := 2) (n := 2) #[(1 : ℤ), 2, 3] rfl
+#check Matrix.ofFlatArray (m := 2) (n := 2) #[(1 : ℤ), 2, 3] rfl
 
 example : birdDet 2 #[1, 2, 2, 4] = (0 : ℤ) := by
   simp only [norm_det]
@@ -101,13 +83,7 @@ example (a b c d : R) : birdDet 2 #[a, b, c, d] = a * d - b * c := by
   ring
 
 example (a b c d : R) :
-    Matrix.det (BirdDet.ofFlatArray (m := 2) (n := 2) #[a, b, c, d] rfl) =
-      a * d - b * c := by
-  eval_det
-  ring
-
-example (a b c d : R) :
-    Matrix.det !![a, b; c, d] =
+    Matrix.det (Matrix.ofFlatArray (m := 2) (n := 2) #[a, b, c, d] rfl) =
       a * d - b * c := by
   eval_det
   ring
@@ -115,17 +91,9 @@ example (a b c d : R) :
 open Polynomial in
 example :
     Matrix.det
-      (BirdDet.ofFlatArray (m := 2) (n := 2)
+      (Matrix.ofFlatArray (m := 2) (n := 2)
         #[((X : ℤ[X]) - 1), X,
           X ^ 2,             1] rfl) =
-      -X ^ 3 + X - 1 := by
-  eval_det
-  ring
-
-open Polynomial in
-example :
-    Matrix.det !![((X : ℤ[X]) - 1), X;
-                  X ^ 2,             1] =
       -X ^ 3 + X - 1 := by
   eval_det
   ring
@@ -150,7 +118,7 @@ lemma test_case_8_det :
   -- These tests use the checked flat-array constructor to avoid Mathlib's
   -- vector-based matrix notation elaboration while still proving a theorem about
   -- `Matrix.det`.
-  Matrix.det (BirdDet.ofFlatArray (m := 8) (n := 8)
+  Matrix.det (Matrix.ofFlatArray (m := 8) (n := 8)
     #[ 2,  0, -1,  0,  0,  0,  0,  0,
        0,  2,  0, -1,  0,  0,  0,  0,
       -1,  0,  2, -1,  0,  0,  0,  0,

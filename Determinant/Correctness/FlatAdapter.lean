@@ -32,10 +32,10 @@ theorem get_eq_ofFlatArray
     (A : Array R)
     (hA : A.size = n * n)
     (i j : Fin n) :
-    get n A i.val j.val = ofFlatArray (m := n) (n := n) A hA i j := by
+    get n A i.val j.val = Matrix.ofFlatArray (m := n) (n := n) A hA i j := by
   have hidx : n * i.val + j.val < A.size := by
     simpa [hA] using (Fin.mkDivMod i j).isLt
-  unfold get ofFlatArray
+  unfold get Matrix.ofFlatArray
   simp [Array.getD, hidx, Nat.mul_comm]
 
 theorem sumFrom_eq_sum_Ico (n lo : Nat) (f : Nat → R) :
@@ -69,7 +69,7 @@ theorem iter_eq_correctness
     (hF : ∀ i j : Fin n, F i.val j.val = F' i j)
     (i j : Fin n) :
     iter n A t F i.val j.val =
-      Correctness.iterEntry (ofFlatArray (m := n) (n := n) A hA) t F' i j := by
+      Correctness.iterEntry (Matrix.ofFlatArray (m := n) (n := n) A hA) t F' i j := by
   induction t generalizing F F' i j with
   | zero =>
       simp [iter, Correctness.iterEntry, hF]
@@ -82,7 +82,7 @@ theorem iter_eq_correctness
           (∑ k : Fin n, if i.val < k.val then iter n A t F k.val k.val else 0) =
             ∑ k : Fin n,
               if i.val < k.val then
-                Correctness.iterEntry (ofFlatArray (m := n) (n := n) A hA) t F' k k
+                Correctness.iterEntry (Matrix.ofFlatArray (m := n) (n := n) A hA) t F' k k
               else 0 := by
         apply Finset.sum_congr rfl
         intro k _hk
@@ -92,8 +92,8 @@ theorem iter_eq_correctness
               if i.val < k.val then iter n A t F i.val k.val * get n A k.val j.val else 0) =
             ∑ k : Fin n,
               if i.val < k.val then
-                Correctness.iterEntry (ofFlatArray (m := n) (n := n) A hA) t F' i k *
-                  ofFlatArray (m := n) (n := n) A hA k j
+                Correctness.iterEntry (Matrix.ofFlatArray (m := n) (n := n) A hA) t F' i k *
+                  Matrix.ofFlatArray (m := n) (n := n) A hA k j
               else 0 := by
         apply Finset.sum_congr rfl
         intro k _hk
@@ -107,7 +107,7 @@ theorem birdDet_eq_birdDetSpec_ofFlatArray
     {n : Nat}
     (A : Array R)
     (hA : A.size = n * n) :
-    birdDet n A = Correctness.birdDetSpec (ofFlatArray (m := n) (n := n) A hA) := by
+    birdDet n A = Correctness.birdDetSpec (Matrix.ofFlatArray (m := n) (n := n) A hA) := by
   cases n with
   | zero =>
       rfl
@@ -115,7 +115,7 @@ theorem birdDet_eq_birdDetSpec_ofFlatArray
       simp [birdDet, Correctness.birdDetSpec]
       exact congrArg ((-1 : R) ^ k * ·)
         (iter_eq_correctness (k + 1) A hA k (get (k + 1) A)
-          (fun i j => ofFlatArray (m := k + 1) (n := k + 1) A hA i j)
+          (fun i j => Matrix.ofFlatArray (m := k + 1) (n := k + 1) A hA i j)
           (by intro i j; exact get_eq_ofFlatArray A hA i j) 0 0)
 
 end BirdDet

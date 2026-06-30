@@ -1,69 +1,82 @@
 module
 
-public import Determinant.CertChain.MatrixNotationSource
+public import Determinant.CertChain.Cert
+public import Determinant.Correctness.Theorem
 
 /-!
 # Tactic frontend for the certificate-chain determinant evaluator
 
-The frontend has three phases:
-
-1. Reify a supported determinant source into a common `DetSource`.
-2. Normalize the corresponding `BirdDet.birdDet` expression using the
-   certificate evaluator.
-3. Compose the optional source bridge proof with the Bird normalization proof.
-
 Supported sources are:
 
 * `BirdDet.birdDet n A`;
-* `Matrix.det (BirdDet.ofFlatArray (m := n) (n := n) A hA)`;
-* elaborated Mathlib matrix notation `Matrix.det !![...]`.
-
-The matrix notation branch is a fully supported source form. Its parser and
-`Matrix.ext` proof construction are isolated in
-`Determinant.CertChain.MatrixNotationSource` because `!![...]` elaborates to
-Mathlib's vector-based matrix representation.
+* `Matrix.det (Matrix.ofFlatArray (m := n) (n := n) A hA)`.
 -/
 
 open Lean Meta Elab Tactic Simp
+open Qq
+open Cert
 
 public meta section
 
-/-- Recognize any determinant expression supported by the certificate frontend. -/
-def sourceOfExpr? (e : Expr) : MetaM (Option DetSource) := do
-  if let some src ← sourceOfBirdDet? e then
-    return some src
-  if let some src ← sourceOfDetOfFlatArray? e then
-    return some src
-  -- Matrix notation is fully supported. It is checked after `ofFlatArray`
-  -- because checked flat arrays are already in the desired internal form.
-  if let some src ← MatrixNotationSource.sourceOfMatrixNotation? e then
-    return some src
-  return none
+/-- Normalize a direct `BirdDet.birdDet` expression. -/
+def normalizeBirdDet (e : Expr) : MetaM Simp.Result := do
+  let info ← Meta.reifyBirdDet e
+  let ctx := Ctx.ofBirdDetInfo info
+  let detNorm ← certBirdDet.run' {} |>.run ctx |>.run .reducible
+  Mathlib.Tactic.RingNF.cleanup {} {expr := detNorm.norm, proof? := some detNorm.proof}
 
-/-- Recognize a supported determinant source or report a user-facing error. -/
-def sourceOfExpr! (e : Expr) : MetaM DetSource := do
-  match ← sourceOfExpr? e with
-  | some src => return src
-  | none =>
-      throwError
-        "expected `BirdDet.birdDet ...`, `Matrix.det (BirdDet.ofFlatArray ...)`, \
-        or supported matrix notation; got{indentExpr e}"
+/--
+Recognize and normalize `Matrix.det (Matrix.ofFlatArray (m := n) (n := n) A hA)`.
 
-/-- Normalize a supported determinant expression, if this frontend recognizes it. -/
-def normalizeDetExpr? (e : Expr) : MetaM (Option Simp.Result) := do
-  match ← sourceOfExpr? e with
-  | none => return none
-  | some src => return some (← src.normalize)
+This is deliberately the only `Matrix.det` frontend path here; Mathlib matrix
+notation elaborates to a different internal representation and is not handled
+by this small recognizer.
+-/
+def normalizeDetOfFlatArray? (e : Expr) : MetaM (Option Simp.Result) := do
+  let e ← instantiateMVars e
+  let ⟨_, α, e⟩ ← inferTypeQ' e
+  let_expr Matrix.det _ _ _ _ detRingInst matrix := e
+    | return none
+  let some detRingInst ← checkTypeQ detRingInst q(CommRing $α)
+    | throwError "expected determinant ring instance to have type{indentExpr q(CommRing $α)}"
+  let_expr Matrix.ofFlatArray _ rowsExpr colsExpr arrayExpr sizeProof := matrix
+    | return none
+  let some rowsExpr ← checkTypeQ rowsExpr q(Nat)
+    | throwError "expected row dimension to have type `Nat`, got{indentExpr rowsExpr}"
+  let some colsExpr ← checkTypeQ colsExpr q(Nat)
+    | throwError "expected column dimension to have type `Nat`, got{indentExpr colsExpr}"
+  unless ← isDefEq rowsExpr colsExpr do
+    throwError "expected square `ofFlatArray` under `Matrix.det`"
+  let some arrayExpr ← checkTypeQ arrayExpr q(Array $α)
+    | throwError "expected flat array to have type{indentExpr q(Array $α)}"
+  let expectedSizeType := q(Array.size $arrayExpr = $rowsExpr * $rowsExpr)
+  let sizeProof ← mkExpectedTypeHint sizeProof expectedSizeType
+  let some sizeProof ← checkTypeQ sizeProof expectedSizeType
+    | throwError "expected size proof to have type{indentExpr expectedSizeType}"
+  let some lhs ← checkTypeQ e α
+    | throwError "expected determinant expression to have type{indentExpr α}"
+  let birdExpr := q(@BirdDet.birdDet $α $detRingInst $rowsExpr $arrayExpr)
+  let flatDet := q(Matrix.det (Matrix.ofFlatArray (m := $rowsExpr) (n := $rowsExpr) $arrayExpr $sizeProof))
+  have : $lhs =Q $flatDet := ⟨⟩
+  let bridge : Q($lhs = $birdExpr) :=
+    q(@BirdDet.det_ofFlatArray_eq_birdDet_square
+      $α $detRingInst $rowsExpr $arrayExpr $sizeProof)
+  let birdNorm ← normalizeBirdDet birdExpr
+  let bridgeResult : Simp.Result := {
+    expr := birdExpr
+    proof? := some bridge
+  }
+  let result ← bridgeResult.mkEqTrans birdNorm
+  return some result
+
 
 /-- Normalize literal `BirdDet.birdDet` calls using the certificate-chain evaluator. -/
 simproc_decl norm_det (BirdDet.birdDet _ _) := fun e => do
-  match ← normalizeDetExpr? e with
-  | some result => return .done result
-  | none => return .continue
+  return .done (← normalizeBirdDet e)
 
 /-- Normalize supported `Matrix.det` calls by rewriting through `BirdDet.birdDet`. -/
 simproc_decl norm_matrix_det (Matrix.det _) := fun e => do
-  match ← normalizeDetExpr? e with
+  match ← normalizeDetOfFlatArray? e with
   | some result => return .done result
   | none => return .continue
 

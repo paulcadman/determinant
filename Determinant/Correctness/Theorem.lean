@@ -118,9 +118,9 @@ theorem det_ofFlatArray_eq_birdDet_square
     {n : Nat}
     (A : Array R)
     (hA : A.size = n * n) :
-    Matrix.det (ofFlatArray (m := n) (n := n) A hA) = birdDet n A := by
+    Matrix.det (Matrix.ofFlatArray (m := n) (n := n) A hA) = birdDet n A := by
   rw [birdDet_eq_birdDetSpec_ofFlatArray A hA]
-  exact (Correctness.birdDetSpec_eq_det (ofFlatArray (m := n) (n := n) A hA)).symm
+  exact (Correctness.birdDetSpec_eq_det (Matrix.ofFlatArray (m := n) (n := n) A hA)).symm
 
 /--
 Shorter bridge theorem name for the square specialization of the rectangular
@@ -131,7 +131,7 @@ theorem det_ofFlatArray_eq_birdDet
     {n : Nat}
     (A : Array R)
     (hA : A.size = n * n) :
-    Matrix.det (ofFlatArray (m := n) (n := n) A hA) = birdDet n A :=
+    Matrix.det (Matrix.ofFlatArray (m := n) (n := n) A hA) = birdDet n A :=
   det_ofFlatArray_eq_birdDet_square A hA
 
 /-- Symmetric orientation of `det_ofFlatArray_eq_birdDet`. -/
@@ -140,7 +140,7 @@ theorem birdDet_eq_det_ofFlatArray
     {n : Nat}
     (A : Array R)
     (hA : A.size = n * n) :
-    birdDet n A = Matrix.det (ofFlatArray (m := n) (n := n) A hA) :=
+    birdDet n A = Matrix.det (Matrix.ofFlatArray (m := n) (n := n) A hA) :=
   (det_ofFlatArray_eq_birdDet A hA).symm
 
 /-- Symmetric orientation of `det_ofFlatArray_eq_birdDet_square`. -/
@@ -149,7 +149,7 @@ theorem birdDet_eq_det_ofFlatArray_square
     {n : Nat}
     (A : Array R)
     (hA : A.size = n * n) :
-    birdDet n A = Matrix.det (ofFlatArray (m := n) (n := n) A hA) :=
+    birdDet n A = Matrix.det (Matrix.ofFlatArray (m := n) (n := n) A hA) :=
   (det_ofFlatArray_eq_birdDet_square A hA).symm
 
 end BirdDet
