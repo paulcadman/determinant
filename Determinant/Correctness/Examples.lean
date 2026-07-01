@@ -29,6 +29,46 @@ Application type mismatch
 
 end FlatMatrixExamples
 
+section FlatAdapterExamples
+
+example {R : Type*} [CommRing R]
+    (A : Array R) (hA : A.size = 2 * 2)
+    (i j : Fin 2) :
+    BirdDet.get 2 A i.val j.val =
+      Matrix.ofFlatArray (m := 2) (n := 2) A hA i j := by
+  exact BirdDet.get_eq_ofFlatArray_square A hA i j
+
+example {R : Type*} [CommRing R]
+    (f : Nat → R) (i : Fin 4) :
+    BirdDet.sumFrom 4 (i.val + 1) f =
+      ∑ k : Fin 4, if i < k then f k.val else 0 := by
+  exact BirdDet.sumFrom_fin_tail 4 i f
+
+example {R : Type*} [CommRing R]
+    (A : Array R) (hA : A.size = 3 * 3)
+    (F : Nat → Nat → R)
+    (i j : Fin 3) :
+    (-(BirdDet.sumFrom 3 (i.val + 1) fun k => F k k) *
+        BirdDet.get 3 A i.val j.val
+      +
+      BirdDet.sumFrom 3 (i.val + 1) fun k =>
+        F i.val k * BirdDet.get 3 A k j.val)
+      =
+    Correctness.stepEntry
+      (Matrix.ofFlatArray (m := 3) (n := 3) A hA)
+      (BirdDet.finView F)
+      i j := by
+  exact BirdDet.step_formula_bridge_ofFlatArray A hA F i j
+
+example {R : Type*} [CommRing R]
+    (A : Array R) (hA : A.size = 3 * 3) :
+    BirdDet.birdDet 3 A =
+      Correctness.birdDetSpec
+        (Matrix.ofFlatArray (m := 3) (n := 3) A hA) := by
+  exact BirdDet.birdDet_eq_birdDetSpec_ofFlatArray A hA
+
+end FlatAdapterExamples
+
 section InvariantExamples
 
 example {R : Type*} [CommRing R]

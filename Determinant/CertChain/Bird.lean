@@ -41,7 +41,7 @@ variable
 /-- Read a cell from a matrix, represented as an Array with cells in row-major
   order. Returns zero for out-of-bounds entries. -/
 def get (n : Nat) (A : Array R) (i j : Nat) : R :=
-  A.getD (i * n + j) 0
+  A.getD (n * i + j) 0
 
 /-- Sum `f lo + ... + f (n - 1)`. Returns zero when `n <= lo`. -/
 def sumFrom (n lo : Nat) (f : Nat → R) : R :=

@@ -9,14 +9,6 @@ open scoped BigOperators
 
 namespace Correctness
 
-/-!
-Paper-facing aliases for the landmarks in Section 2 of Bird's paper.
-
-This file does not prove new mathematics. It gives one place to look when
-reading the paper side-by-side with the formalization.
--/
-
-/-- Bird equation (1), the main invariant. -/
 theorem paper_eq1_iterEntry_formula
     {R : Type*} [CommRing R]
     {n : Nat}
@@ -29,7 +21,6 @@ theorem paper_eq1_iterEntry_formula
           wordDet A (vcons i α) (vcons j α)) := by
   exact iterEntry_formula A p i j
 
-/-- Bird equation (2), the diagonal part of `mu(F_A^p(A))`. -/
 theorem paper_eq2_diagonal_formula
     {R : Type*} [CommRing R]
     {n : Nat}
@@ -51,7 +42,6 @@ theorem paper_eq2_diagonal_formula
           wordDet A α α) := by
   exact diagonal_formula A p i hdiag
 
-/-- Bird equation (3), off-diagonal part after the induction hypothesis. -/
 theorem paper_eq3_offdiag_update
     {R : Type*} [CommRing R]
     {n p : Nat}
@@ -76,7 +66,6 @@ theorem paper_eq3_offdiag_update
           A (y.1.get y.2) j) := by
   exact offdiag_update_formula A ih i j
 
-/-- Bird equation (5), summed first-column expansion. -/
 theorem paper_eq5_laplace_sum
     {R : Type*} [CommRing R]
     {n p : Nat}
@@ -94,7 +83,6 @@ theorem paper_eq5_laplace_sum
             (vcons (y.1.get y.2) (eraseIdx y.1 y.2)) := by
   exact sum_wordDet_cons_cons_expand A i j
 
-/-- Comparison of the second sums in equations (3) and (5). -/
 theorem paper_eq3_eq_eq5_offdiag
     {R : Type*} [CommRing R]
     {n p : Nat}
@@ -109,7 +97,6 @@ theorem paper_eq3_eq_eq5_offdiag
     ∑ y ∈ CofactorDomain (i := i) (p := p), cofactorTerm A i j y := by
   exact offdiag_reindex_conditional A i j
 
-/-- Final theorem corresponding to Bird's Theorem 1. -/
 theorem paper_theorem1
     {R : Type*} [CommRing R]
     {n : Nat}

@@ -245,7 +245,7 @@ get n A i j = elem  -- By the definition of `BirdDet.get` in `Bird.lean`
 
 `BirdDet.get` reads the flat row-major array with `Array.getD`. The reifier has
 already checked that the array argument is a literal, so `entry` is the literal
-cell at index `i * n + j`.
+cell at index `n * i + j`.
 -/
 def certEntry (i j : Nat) : CertM rα (Cert rα) := do
   if let some c := (← get).entryCache[(i, j)]? then
@@ -254,7 +254,7 @@ def certEntry (i j : Nat) : CertM rα (Cert rα) := do
   have dim : Q(Nat) := ctx.info.dimensionExpr
   have A : Q(Array $α) := ctx.info.arrayExpr
   let lhs : Q($α) := q(BirdDet.get $dim $A $i $j)
-  let idx := i * ctx.info.dimension + j
+  let idx := ctx.info.dimension * i + j
   let entry : Q($α) := ctx.info.arrayEntries.getD idx q(0)
   let ce ← certEval entry
   -- This `rfl` is the unfolding of `BirdDet.get`.
